@@ -1,6 +1,6 @@
 
 {
-  "name": "nai_prompt_manager",
+  "name": "nai-prompt-manager",
   "private": true,
   "version": "0.2.2",
   "type": "module",

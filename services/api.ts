@@ -22,7 +22,11 @@ const handleResponse = async (res: Response) => {
 
 export const api = {
   get: async (endpoint: string) => {
-    const res = await fetch(`${API_BASE}${endpoint}`, { 
+    // Add timestamp to prevent caching
+    const separator = endpoint.includes('?') ? '&' : '?';
+    const url = `${API_BASE}${endpoint}${separator}_t=${Date.now()}`;
+    
+    const res = await fetch(url, { 
         headers: getHeaders() 
     });
     return handleResponse(res);

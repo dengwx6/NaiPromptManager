@@ -11,6 +11,7 @@ interface ChainEditorProps {
   onUpdateChain: (id: string, updates: Partial<PromptChain>) => void;
   onBack: () => void;
   onFork: (chain: PromptChain) => void;
+  setIsDirty: (isDirty: boolean) => void;
 }
 
 const RESOLUTIONS = {
@@ -19,7 +20,7 @@ const RESOLUTIONS = {
   Square: { width: 1024, height: 1024, label: "方形 (1024x1024)" },
 };
 
-export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, onUpdateChain, onBack, onFork }) => {
+export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, onUpdateChain, onBack, onFork, setIsDirty }) => {
   // Permission Check
   const isOwner = chain.userId === currentUser.id || currentUser.role === 'admin';
 
@@ -35,6 +36,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const [params, setParams] = useState(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' });
   
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Sync dirty state with parent
+  useEffect(() => {
+    setIsDirty(hasChanges);
+  }, [hasChanges, setIsDirty]);
 
   // --- Testing State ---
   const [variables, setVariables] = useState<Record<string, string>>({});
@@ -64,6 +70,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       });
     }
     setActiveModules(initialModules);
+    setHasChanges(false);
 
     const savedKey = localStorage.getItem('nai_api_key');
     if (savedKey) setApiKey(savedKey);
@@ -232,23 +239,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                     onChange={(e) => handleApiKeyChange(e.target.value)}
                 />
             </div>
-
-            {isOwner ? (
-                <>
-                    {hasChanges && <span className="text-yellow-600 dark:text-yellow-500 text-xs animate-pulse font-bold">● 未保存</span>}
-                    <button
-                        onClick={handleSaveAll}
-                        disabled={!hasChanges}
-                        className={`px-4 py-1.5 rounded text-sm font-medium transition-all ${
-                        hasChanges 
-                            ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' 
-                            : 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                        }`}
-                    >
-                        保存更改
-                    </button>
-                </>
-            ) : (
+            
+            {/* Save button removed from here */}
+            {!isOwner && (
                 <button
                     onClick={handleFork}
                     className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium shadow-lg shadow-green-500/20 flex items-center"
@@ -263,8 +256,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       {/* Editor Content */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           {/* Left Panel */}
-          <div className="w-full lg:w-1/2 flex flex-col border-r border-gray-200 dark:border-gray-800 overflow-y-auto bg-white dark:bg-gray-900">
-              <div className="p-6 space-y-6 max-w-3xl mx-auto w-full relative">
+          <div className="w-full lg:w-1/2 flex flex-col border-r border-gray-200 dark:border-gray-800 overflow-y-auto bg-white dark:bg-gray-900 relative">
+              <div className="p-6 space-y-6 max-w-3xl mx-auto w-full pb-24">
                   {!isOwner && (
                       <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 rounded mb-4 text-sm text-yellow-700 dark:text-yellow-400">
                           您正在查看他人的 Prompt Chain，无法直接修改。您可以调整参数进行测试，或点击右上角“另存为”保存到您的列表。
@@ -335,7 +328,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                     />
                   </section>
 
-                  {/* Params (Editable even for non-owners for testing, but won't save unless isOwner) */}
+                  {/* Params */}
                   <section className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">参数设置 (测试用)</h3>
                      <div className="grid grid-cols-2 gap-4">
@@ -372,6 +365,26 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                      </div>
                   </section>
               </div>
+
+              {/* Sticky Footer for Save Actions */}
+              {isOwner && (
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shadow-lg transform transition-transform duration-300">
+                    <div className="text-sm text-gray-500">
+                        {hasChanges ? <span className="text-yellow-600 dark:text-yellow-500 font-medium">⚠️ 更改未保存</span> : <span className="text-green-600 dark:text-green-500">✅ 已保存所有更改</span>}
+                    </div>
+                    <button
+                        onClick={handleSaveAll}
+                        disabled={!hasChanges}
+                        className={`px-8 py-2.5 rounded-lg font-bold shadow-lg transition-all transform active:scale-95 ${
+                            hasChanges 
+                            ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 text-white shadow-indigo-500/30' 
+                            : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+                        }`}
+                    >
+                        保存 Chain
+                    </button>
+                </div>
+              )}
           </div>
 
           {/* Right Panel (Testing) */}

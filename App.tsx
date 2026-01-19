@@ -18,6 +18,9 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [dbConfigError, setDbConfigError] = useState(false);
   
+  // Dirty State for Navigation Guard
+  const [isEditorDirty, setIsEditorDirty] = useState(false);
+  
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginUser, setLoginUser] = useState('');
@@ -65,6 +68,14 @@ const App = () => {
   const toggleTheme = () => setIsDark(!isDark);
 
   const handleNavigate = (newView: ViewState, id?: string) => {
+    if (isEditorDirty) {
+        if (!confirm('您有未保存的更改，确定要离开吗？')) {
+            return;
+        }
+        // User confirmed, reset dirty state
+        setIsEditorDirty(false);
+    }
+
     setSelectedId(id);
     setView(newView);
     if (newView === 'list' && !loading) {
@@ -170,7 +181,14 @@ const App = () => {
       case 'edit':
         const editChain = getSelectedChain();
         if (!editChain) return <div>Chain not found</div>;
-        return <ChainEditor chain={editChain} currentUser={currentUser} onUpdateChain={handleUpdateChain} onBack={() => handleNavigate('list')} onFork={handleForkChain} />;
+        return <ChainEditor 
+                chain={editChain} 
+                currentUser={currentUser} 
+                onUpdateChain={handleUpdateChain} 
+                onBack={() => handleNavigate('list')} 
+                onFork={handleForkChain} 
+                setIsDirty={setIsEditorDirty}
+               />;
       case 'library':
           return <ArtistLibrary isDark={isDark} toggleTheme={toggleTheme} />;
       case 'inspiration':

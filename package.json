@@ -1,22 +1,30 @@
+
 {
-  "name": "naipromptmanager",
+  "name": "nai-prompt-manager",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "tsc -b && vite build && npm run build:worker",
+    "build:worker": "esbuild worker/index.ts --bundle --format=esm --outfile=dist/_worker.js --platform=browser",
+    "preview": "vite preview",
+    "deploy": "wrangler pages deploy dist"
   },
   "dependencies": {
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "jszip": "3.10.1"
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.1.2",
+    "typescript": "^5.8.3",
+    "vite": "^6.4.1",
+    "esbuild": "^0.25.0",
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0"
   }
 }

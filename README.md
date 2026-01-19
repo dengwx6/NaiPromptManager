@@ -51,6 +51,7 @@ NovelAI Prompt Manager 是一个专为 NovelAI 用户打造的现代化提示词
 - **历史记录**：自动保存复制历史，防止灵感丢失。
 
 ---
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kirafishy/NaiPromptManager)
 
 ## 🚀 快速部署
 

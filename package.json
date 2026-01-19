@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build && npm run build:worker",
     "build:worker": "esbuild worker/index.ts --bundle --format=esm --outfile=dist/_worker.js --platform=browser",
     "preview": "vite preview",
-    "deploy": "wrangler pages deploy dist"
+    "deploy": "npm run build"
   },
   "dependencies": {
     "react": "^19.2.3",
@@ -24,6 +24,7 @@
     "typescript": "^5.8.3",
     "vite": "^6.4.1",
     "esbuild": "^0.25.0",
+    "wrangler": "^3.109.0",
     "@cloudflare/workers-types": "^4.20250214.0",
     "tailwindcss": "^4.0.0",
     "@tailwindcss/vite": "^4.0.0"

@@ -25,7 +25,7 @@ interface D1Database {
 // Pages Advanced Mode 自动注入 ASSETS fetcher
 interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
-  DB?: D1Database; // DB is optional now until configured
+  DB?: D1Database | string; // Handle misconfiguration case
   NAI_API_KEY: string;
   MASTER_KEY: string;
 }
@@ -135,17 +135,17 @@ export default {
       }
 
       // --- Database Guard ---
-      if ((path.startsWith('/api/chains') || path.startsWith('/api/artists') || path.startsWith('/api/inspirations')) && !env.DB) {
-        return error('Database not configured. Please bind a D1 database named "DB" in Cloudflare Pages settings and REDEPLOY.', 503);
+      if (!env.DB) {
+        return error('Database not configured. Please bind a D1 database named "DB".', 503);
       }
 
-      const db = env.DB!;
+      // Critical Check: Prevent "db.prepare is not a function"
+      // If the user adds DB="xxx" to [vars], env.DB becomes a string, breaking the app.
+      if (typeof env.DB === 'string' || typeof (env.DB as any).prepare !== 'function') {
+        return error('Configuration Error: "DB" variable is a string/invalid. Do NOT add "DB" to [vars] in wrangler.toml or Dashboard Environment Variables. It must be a D1 Binding only.', 500);
+      }
 
-      // Helper: Auto Init DB if table missing
-      const ensureDbInitialized = async () => {
-         // Try to run init SQL if a query fails, or just rely on error handling below?
-         // Let's rely on specific error handling for robustness.
-      };
+      const db = env.DB as D1Database;
 
       // --- Chains ---
       if (path === '/api/chains' && method === 'GET') {

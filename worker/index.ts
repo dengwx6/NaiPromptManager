@@ -1,4 +1,6 @@
 
+import bcrypt from 'bcryptjs';
+
 // Add missing D1 type definitions locally
 interface D1Result<T = unknown> {
   results: T[];
@@ -246,6 +248,8 @@ export default {
         const admin = await db.prepare('SELECT * FROM users WHERE username = ?').bind('admin').first();
         if (!admin) {
             const adminId = crypto.randomUUID();
+            // Note: Default admin password stored in plain text initially. 
+            // It will be auto-hashed upon first login.
             await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)')
               .bind(adminId, 'admin', 'admin_996', 'admin', Date.now()).run();
         }
@@ -288,15 +292,41 @@ export default {
           return json({ success: true });
       }
 
-      // Login
+      // Login (UPDATED: Hash Support & Lazy Migration)
       if (path === '/api/auth/login' && method === 'POST') {
           const { username, password } = await request.json() as any;
           try { await db.prepare('SELECT 1 FROM users').first(); } catch(e) { await initDB(); }
 
-          const user = await db.prepare('SELECT * FROM users WHERE username = ? AND password = ?')
-              .bind(username, password).first<{id: string, role: string, storage_usage: number}>();
+          // 1. Fetch user by username ONLY
+          const user = await db.prepare('SELECT * FROM users WHERE username = ?')
+              .bind(username).first<{id: string, role: string, storage_usage: number, password: string}>();
 
           if (!user) return error('用户名或密码错误', 401);
+
+          // 2. Password Verification Logic
+          let isValid = false;
+          let needMigration = false;
+
+          // Try verifying as bcrypt hash
+          // Note: bcrypt strings usually start with $2a$, $2b$ etc.
+          // Plain text won't match, so this is safe.
+          isValid = await bcrypt.compare(password, user.password);
+
+          // If hash check failed, fallback to plain text check (Legacy Support)
+          if (!isValid && user.password === password) {
+              isValid = true;
+              needMigration = true; // Mark for upgrade
+          }
+
+          if (!isValid) return error('用户名或密码错误', 401);
+
+          // 3. Lazy Migration: Update plain text to hash in background
+          if (needMigration) {
+              const newHash = await bcrypt.hash(password, 10);
+              // Fire and forget update (or await if critical, but non-blocking is better for speed)
+              await db.prepare('UPDATE users SET password = ? WHERE id = ?')
+                  .bind(newHash, user.id).run();
+          }
 
           const sessionId = crypto.randomUUID();
           const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -396,10 +426,14 @@ export default {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
           const { username, password } = await request.json() as any;
           if (!username || !password) return error('Missing fields', 400);
+          
+          // UPDATED: Hash password before creating user
+          const hashedPassword = await bcrypt.hash(password, 10);
+
           try {
               const id = crypto.randomUUID();
               await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)')
-                  .bind(id, username, password, 'user', Date.now()).run();
+                  .bind(id, username, hashedPassword, 'user', Date.now()).run();
               return json({ success: true });
           } catch(e: any) {
               if (e.message.includes('UNIQUE constraint')) return error('Username exists', 409);
@@ -410,8 +444,12 @@ export default {
       if (path === '/api/users/password' && method === 'PUT') {
           const { password } = await request.json() as any;
           if (!password) return error('Missing password', 400);
+          
+          // UPDATED: Hash password before updating
+          const hashedPassword = await bcrypt.hash(password, 10);
+
           await db.prepare('UPDATE users SET password = ? WHERE id = ?')
-              .bind(password, currentUser.id).run();
+              .bind(hashedPassword, currentUser.id).run();
           return json({ success: true });
       }
       

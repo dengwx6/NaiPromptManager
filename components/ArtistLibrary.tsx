@@ -239,87 +239,90 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden relative">
       
       {/* --- Controls Header (Replicated Structure) --- */}
-      <div className="p-4 bg-white dark:bg-gray-800 shadow-md flex flex-col md:flex-row gap-4 items-center justify-center flex-wrap z-10 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+      <div className="p-4 bg-white dark:bg-gray-800 shadow-md flex flex-col items-stretch gap-4 z-10 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         
-        {/* Refresh Button (Added) */}
-        <button 
-            onClick={handleRefresh} 
-            className={`p-2 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ${isLoading ? 'animate-spin' : ''}`}
-            title="刷新画师列表"
-        >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-        </button>
+        <div className="flex gap-2 w-full">
+            {/* Refresh Button (Added) */}
+            <button 
+                onClick={handleRefresh} 
+                className={`p-2 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0 ${isLoading ? 'animate-spin' : ''}`}
+                title="刷新画师列表"
+            >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            </button>
 
-        {/* Search */}
-        <div className="flex-1 min-w-[300px] relative">
-            <input 
-                type="text" 
-                placeholder="输入画师名 / 粘贴 Prompt..." 
-                className="w-full pl-4 pr-10 py-3 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-            />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs border border-gray-300 dark:border-gray-600 px-1.5 rounded pointer-events-none">/</div>
-        </div>
-
-        {/* Settings Group */}
-        <div className="flex gap-2 items-center">
-            <button 
-                onClick={() => setShowImport(true)} 
-                title="批量导入"
-                className="h-10 px-4 rounded-full border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 font-bold flex items-center gap-2 transition-colors"
-            >
-                📥
-            </button>
-            
-            <button 
-                onClick={() => setShowHistory(!showHistory)} 
-                title="历史记录"
-                className="h-10 px-4 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center transition-colors"
-            >
-                🕒
-            </button>
-            
-            <button 
-                onClick={() => setShowFavOnly(!showFavOnly)} 
-                title="收藏"
-                className={`h-10 px-4 rounded-full border flex items-center transition-colors ${
-                    showFavOnly 
-                    ? 'bg-yellow-50 border-yellow-300 text-yellow-600 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-500' 
-                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400'
-                }`}
-            >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"></path></svg>
-            </button>
-            
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400 select-none ml-2">
+            {/* Search */}
+            <div className="flex-1 relative">
                 <input 
-                    type="checkbox" 
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                    checked={usePrefix} 
-                    onChange={(e) => {setUsePrefix(e.target.checked); localStorage.setItem('nai_use_prefix', String(e.target.checked))}} 
+                    type="text" 
+                    placeholder="搜索 / 粘贴 Prompt..." 
+                    className="w-full pl-4 pr-10 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
                 />
-                <span className="text-xs">前缀</span>
-            </label>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs border border-gray-300 dark:border-gray-600 px-1.5 rounded pointer-events-none">/</div>
+            </div>
         </div>
 
-        {/* Gacha Box */}
-        <div className="flex items-center gap-2 pl-4 border-l border-gray-300 dark:border-gray-600">
-            <input 
-                type="number" 
-                value={gachaCount} 
-                onChange={e => setGachaCount(parseInt(e.target.value))} 
-                min="1" max="50"
-                className="w-12 h-10 text-center rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-indigo-500"
-            />
-            <button 
-                onClick={gacha}
-                className="h-10 px-5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-md transition-transform active:scale-95 flex items-center gap-2"
-            >
-                🎲 帮我选
-            </button>
-        </div>
+        <div className="flex justify-between items-center flex-wrap gap-2">
+            {/* Settings Group */}
+            <div className="flex gap-2 items-center">
+                <button 
+                    onClick={() => setShowImport(true)} 
+                    title="批量导入"
+                    className="h-8 px-3 rounded-full border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 font-bold flex items-center gap-2 transition-colors text-sm"
+                >
+                    📥
+                </button>
+                
+                <button 
+                    onClick={() => setShowHistory(!showHistory)} 
+                    title="历史记录"
+                    className="h-8 px-3 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center transition-colors text-sm"
+                >
+                    🕒
+                </button>
+                
+                <button 
+                    onClick={() => setShowFavOnly(!showFavOnly)} 
+                    title="收藏"
+                    className={`h-8 px-3 rounded-full border flex items-center transition-colors text-sm ${
+                        showFavOnly 
+                        ? 'bg-yellow-50 border-yellow-300 text-yellow-600 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-500' 
+                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400'
+                    }`}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"></path></svg>
+                </button>
+                
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400 select-none ml-2">
+                    <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                        checked={usePrefix} 
+                        onChange={(e) => {setUsePrefix(e.target.checked); localStorage.setItem('nai_use_prefix', String(e.target.checked))}} 
+                    />
+                    <span className="text-xs">前缀</span>
+                </label>
+            </div>
 
+            {/* Gacha Box */}
+            <div className="flex items-center gap-2 pl-4 border-l border-gray-300 dark:border-gray-600 ml-auto">
+                <input 
+                    type="number" 
+                    value={gachaCount} 
+                    onChange={e => setGachaCount(parseInt(e.target.value))} 
+                    min="1" max="50"
+                    className="w-10 h-8 text-center rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:border-indigo-500"
+                />
+                <button 
+                    onClick={gacha}
+                    className="h-8 px-3 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-transform active:scale-95 flex items-center gap-1"
+                >
+                    🎲 选
+                </button>
+            </div>
+        </div>
       </div>
 
       {/* --- A-Z Navigation Sidebar (Moved to LEFT) --- */}
@@ -336,14 +339,15 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       </div>
 
       {/* --- Grid Content --- */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pl-10 md:pl-14 pb-40 bg-gray-50 dark:bg-gray-900 scroll-smooth relative">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 md:pl-14 pb-40 bg-gray-50 dark:bg-gray-900 scroll-smooth relative">
          {isLoading && (
              <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 dark:bg-gray-900/80 z-20">
                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
              </div>
          )}
          
-         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 pr-6"> 
+         {/* Updated Grid Columns for Mobile: grid-cols-2 */}
+         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4 md:pr-6"> 
              {filteredArtists.map((artist, idx) => {
                  const isSelected = !!cart.find(c => c.name === artist.name);
                  const isFav = favorites.has(artist.name);
@@ -367,11 +371,11 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
                              
                              {/* Actions Overlay */}
-                             <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                             <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                  <button onClick={(e) => toggleFav(artist.name, e)} className={`p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm ${isFav ? 'text-yellow-500' : 'text-gray-600 dark:text-white'}`}>
                                      <svg className="w-4 h-4" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
                                  </button>
-                                 <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-blue-500 dark:text-blue-300 hover:text-blue-600 pointer-events-auto">
+                                 <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="hidden md:block p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-blue-500 dark:text-blue-300 hover:text-blue-600 pointer-events-auto">
                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                  </a>
                                  <button onClick={(e) => {e.stopPropagation(); setLightboxImg({src: artist.imageUrl, name: artist.name})}} className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-gray-700 dark:text-white pointer-events-auto">
@@ -387,8 +391,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                  </div>
                              )}
                          </div>
-                         <div className="p-3 bg-white dark:bg-gray-800 text-center border-t border-gray-100 dark:border-gray-700">
-                             <div className={`text-sm font-bold truncate ${isSelected ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'}`}>{artist.name}</div>
+                         <div className="p-2 md:p-3 bg-white dark:bg-gray-800 text-center border-t border-gray-100 dark:border-gray-700">
+                             <div className={`text-xs md:text-sm font-bold truncate ${isSelected ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'}`}>{artist.name}</div>
                          </div>
                      </div>
                  )
@@ -397,7 +401,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       </div>
 
       {/* --- Cart Bar --- */}
-      <div className={`absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-950/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 transition-transform duration-300 transform shadow-[0_-5px_20px_rgba(0,0,0,0.1)] ${cart.length > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
+      <div className={`absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-950/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 transition-transform duration-300 transform shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-30 ${cart.length > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
           <div className="p-4 max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-center">
               <div className="flex-1 overflow-x-auto flex gap-2 pb-2 md:pb-0 w-full no-scrollbar">
                   {cart.map((item, idx) => (
@@ -409,10 +413,12 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                       </div>
                   ))}
               </div>
-              <div className="flex gap-2 flex-shrink-0 items-center">
-                  <div className="text-sm text-gray-500 dark:text-gray-400 mr-2">已选 <span className="font-bold text-gray-900 dark:text-white">{cart.length}</span> 位</div>
-                  <button onClick={() => setCart([])} className="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm font-bold transition-colors">清空</button>
-                  <button onClick={copyCart} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors">复制组合串</button>
+              <div className="flex gap-2 flex-shrink-0 items-center w-full md:w-auto justify-between md:justify-end">
+                  <div className="text-sm text-gray-500 dark:text-gray-400 mr-2">已选 <span className="font-bold text-gray-900 dark:text-white">{cart.length}</span></div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setCart([])} className="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm font-bold transition-colors">清空</button>
+                    <button onClick={copyCart} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors">复制</button>
+                  </div>
               </div>
           </div>
       </div>

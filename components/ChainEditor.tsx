@@ -5,6 +5,7 @@ import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { localHistory } from '../services/localHistory';
 import { api } from '../services/api';
+import { compressImage } from '../services/imageUtils'; // Import compression tool
 
 interface ChainEditorProps {
   chain: PromptChain;
@@ -43,6 +44,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const [subjectPrompt, setSubjectPrompt] = useState('');
   
   const [hasChanges, setHasChanges] = useState(false);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   // Sync dirty state with parent
   useEffect(() => {
@@ -255,10 +257,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
             // Convert Base64 to File object for upload
             const res = await fetch(generatedImage);
             const blob = await res.blob();
-            const file = new File([blob], "preview.png", { type: "image/png" });
+            
+            // COMPRESSION STEP
+            // Resize to max 1024px width/height and convert to WebP 0.85
+            const compressedFile = await compressImage(blob, 1024, 0.85);
 
-            // 1. Upload Binary
-            const uploadRes = await api.uploadFile(file, 'covers');
+            // 1. Upload Binary (Compressed)
+            const uploadRes = await api.uploadFile(compressedFile, 'covers');
             
             // 2. Update Chain with URL
             await onUpdateChain(chain.id, { previewImage: uploadRes.url });
@@ -279,8 +284,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       if(confirm('您确定要上传新封面吗？\n\n警告：此操作将永久删除旧的封面图文件。')) {
           setIsUploading(true);
           try {
+              // COMPRESSION STEP
+              const compressedFile = await compressImage(file, 1024, 0.85);
+
               // 1. Upload Binary
-              const res = await api.uploadFile(file, 'covers');
+              const res = await api.uploadFile(compressedFile, 'covers');
               
               // 2. Update Chain with URL
               await onUpdateChain(chain.id, { previewImage: res.url });
@@ -310,28 +318,27 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Top Bar */}
       <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-4 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 flex-1">
-          <button onClick={onBack} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors">
+        <div className="flex items-center gap-4 flex-1 overflow-hidden">
+          <button onClick={onBack} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors flex-shrink-0">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
           </button>
           
           {isEditingInfo && isOwner ? (
-              <div className="flex items-center gap-2 flex-1 max-w-2xl">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 flex-1 max-w-2xl">
                   <input type="text" value={chainName} onChange={e => {setChainName(e.target.value); setHasChanges(true)}} className="bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-900 dark:text-white text-sm focus:border-indigo-500 outline-none font-bold" />
                   <input type="text" value={chainDesc} onChange={e => {setChainDesc(e.target.value); setHasChanges(true)}} className="bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-700 dark:text-gray-300 text-sm flex-1 focus:border-indigo-500 outline-none" />
               </div>
           ) : (
-             <div className="flex items-center gap-2 group cursor-pointer" onClick={() => isOwner && setIsEditingInfo(true)}>
-                <h1 className="text-lg font-bold text-gray-900 dark:text-white">{chainName}</h1>
+             <div className="flex items-center gap-2 group cursor-pointer overflow-hidden" onClick={() => isOwner && setIsEditingInfo(true)}>
+                <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate">{chainName}</h1>
                 <span className="text-gray-500 dark:text-gray-500 text-sm hidden md:inline truncate max-w-xs">{chainDesc}</span>
-                {chain.username && <span className="text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-600 dark:text-gray-300">by {chain.username}</span>}
-                {isOwner && <svg className="w-4 h-4 text-gray-400 group-hover:text-gray-600 dark:text-gray-600 dark:group-hover:text-gray-400 opacity-0 group-hover:opacity-100 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}
+                {isOwner && <svg className="w-4 h-4 text-gray-400 group-hover:text-gray-600 dark:text-gray-600 dark:group-hover:text-gray-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}
              </div>
           )}
         </div>
         
-        <div className="flex items-center gap-4">
-             <div className="flex gap-2 mr-2">
+        <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
+             <div className="flex gap-2">
                 <button 
                     onClick={() => copyPromptToClipboard(false)} 
                     className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
@@ -351,8 +358,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
             <div className="relative group">
                 <input 
                     type="password" 
-                    placeholder="NAI API Key" 
-                    className="w-32 focus:w-64 transition-all bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-sm text-gray-800 dark:text-gray-200 outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder="API Key" 
+                    className="w-20 md:w-32 focus:w-40 md:focus:w-64 transition-all bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-sm text-gray-800 dark:text-gray-200 outline-none focus:ring-1 focus:ring-indigo-500"
                     value={apiKey}
                     onChange={(e) => handleApiKeyChange(e.target.value)}
                 />
@@ -363,8 +370,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                     onClick={handleFork}
                     className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium shadow-lg shadow-green-500/20 flex items-center"
                 >
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
-                    另存为 (Fork)
+                    <svg className="w-4 h-4 mr-1 md:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                    <span className="hidden md:inline">Fork</span>
                 </button>
             )}
         </div>
@@ -372,12 +379,12 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
 
       {/* Editor Content */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-          {/* Left Panel */}
-          <div className="w-full lg:w-1/2 flex flex-col border-r border-gray-200 dark:border-gray-800 overflow-y-auto bg-white dark:bg-gray-900 relative">
-              <div className="p-6 space-y-6 max-w-3xl mx-auto w-full pb-24">
+          {/* Left Panel - Editor */}
+          <div className="w-full lg:w-1/2 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-800 overflow-y-auto bg-white dark:bg-gray-900 relative order-2 lg:order-1 flex-1">
+              <div className="p-4 md:p-6 space-y-6 max-w-3xl mx-auto w-full pb-24">
                   {!isOwner && (
                       <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 rounded mb-4 text-sm text-yellow-700 dark:text-yellow-400">
-                          您正在查看他人的画师串，无法直接修改。您可以调整参数进行测试，或点击右上角“另存为”保存到您的列表。
+                          您正在查看他人的画师串，无法直接修改。您可以调整参数进行测试，或点击右上角“Fork”保存到您的列表。
                       </div>
                   )}
 
@@ -407,17 +414,17 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                     <div className="space-y-3">
                         {(modules || []).map((mod, idx) => (
                             <div key={mod.id} className={`bg-gray-50 dark:bg-gray-800/40 border rounded-lg p-3 ${activeModules[mod.id] !== false ? 'border-gray-300 dark:border-gray-700' : 'border-gray-200 dark:border-gray-800 opacity-60'}`}>
-                                <div className="flex gap-2 mb-2 items-center">
-                                    <input type="checkbox" checked={activeModules[mod.id] !== false} onChange={() => toggleModuleActive(mod.id)} className="rounded bg-gray-100 dark:bg-gray-900 text-indigo-600 focus:ring-0" />
+                                <div className="flex flex-wrap gap-2 mb-2 items-center">
+                                    <input type="checkbox" checked={activeModules[mod.id] !== false} onChange={() => toggleModuleActive(mod.id)} className="rounded bg-gray-100 dark:bg-gray-900 text-indigo-600 focus:ring-0 flex-shrink-0" />
                                     <input 
                                         type="text"
                                         disabled={!isOwner}
-                                        className="bg-transparent border-b border-transparent focus:border-indigo-500 text-indigo-600 dark:text-indigo-300 font-medium text-sm outline-none px-1 w-1/3"
+                                        className="bg-transparent border-b border-transparent focus:border-indigo-500 text-indigo-600 dark:text-indigo-300 font-medium text-sm outline-none px-1 flex-1 min-w-[120px]"
                                         value={mod.name}
                                         onChange={(e) => handleModuleChange(idx, 'name', e.target.value)}
                                     />
                                     {/* Pre/Post Toggle */}
-                                    <div className="flex bg-gray-200 dark:bg-gray-700 rounded p-0.5 ml-2">
+                                    <div className="flex bg-gray-200 dark:bg-gray-700 rounded p-0.5 ml-auto flex-shrink-0">
                                         <button 
                                             onClick={() => handleModuleChange(idx, 'position', 'pre')}
                                             disabled={!isOwner}
@@ -433,9 +440,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                             后置
                                         </button>
                                     </div>
-                                    <div className="flex-1"></div>
                                     {isOwner && (
-                                        <button onClick={() => removeModule(idx)} className="text-gray-400 hover:text-red-500">
+                                        <button onClick={() => removeModule(idx)} className="text-gray-400 hover:text-red-500 flex-shrink-0">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                         </button>
                                     )}
@@ -465,7 +471,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   {/* Params */}
                   <section className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">参数设置</h3>
-                     <div className="grid grid-cols-2 gap-4">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div>
                              <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">图片尺寸</label>
                              <select 
@@ -506,9 +512,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
 
               {/* Sticky Footer for Save Actions */}
               {isOwner && (
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shadow-lg transform transition-transform duration-300">
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shadow-lg transform transition-transform duration-300 z-10">
                     <div className="text-sm text-gray-500">
-                        {hasChanges ? <span className="text-yellow-600 dark:text-yellow-500 font-medium">⚠️ 更改未保存</span> : <span className="text-green-600 dark:text-green-500">✅ 已保存所有更改</span>}
+                        {hasChanges ? <span className="text-yellow-600 dark:text-yellow-500 font-medium">⚠️ 未保存</span> : <span className="text-green-600 dark:text-green-500">✅ 已保存</span>}
                     </div>
                     <button
                         onClick={handleSaveAll}
@@ -519,21 +525,21 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                             : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
                         }`}
                     >
-                        保存画师串
+                        保存
                     </button>
                 </div>
               )}
           </div>
 
-          {/* Right Panel (Testing) */}
-          <div className="w-full lg:w-1/2 flex flex-col bg-gray-100 dark:bg-black/20">
-              <div className="flex-1 flex flex-col p-6 overflow-hidden">
+          {/* Right Panel - Preview (Testing) - Order 1 on mobile (top) */}
+          <div className="w-full lg:w-1/2 flex flex-col bg-gray-100 dark:bg-black/20 order-1 lg:order-2 border-b lg:border-b-0 border-gray-200 dark:border-gray-800">
+              <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden min-h-[400px]">
                   {/* Subject / Variable Input */}
                   <div className="mb-4 bg-white dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
                       <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2">3. 主体 / 变量提示词 (Subject)</h3>
                       <p className="text-[10px] text-gray-400 mb-2">此处内容将插入在 Base + 前置模块之后，后置模块之前。</p>
                       <textarea
-                          className="w-full h-32 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm outline-none focus:border-indigo-500 font-mono resize-none"
+                          className="w-full h-24 md:h-32 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm outline-none focus:border-indigo-500 font-mono resize-none"
                           placeholder="例如：1girl, solo, white dress, sitting..."
                           value={subjectPrompt}
                           onChange={(e) => {
@@ -547,7 +553,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   <button
                     onClick={handleGenerate}
                     disabled={isGenerating}
-                    className={`w-full py-3 rounded-lg font-bold text-white shadow-lg transition-all mb-4 ${
+                    className={`w-full py-3 rounded-lg font-bold text-white shadow-lg transition-all mb-4 flex-shrink-0 ${
                         isGenerating ? 'bg-gray-400 cursor-wait' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500'
                     }`}
                     >
@@ -555,13 +561,19 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   </button>
                   {errorMsg && <div className="text-red-500 text-xs mb-2 text-center">{errorMsg}</div>}
                   
-                  <div className="flex-1 min-h-0 bg-white dark:bg-gray-950/50 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-center relative group overflow-hidden">
+                  <div 
+                      className="flex-1 min-h-[300px] lg:min-h-0 bg-white dark:bg-gray-950/50 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-center relative group overflow-hidden cursor-zoom-in"
+                      onClick={() => {
+                        const img = generatedImage || chain.previewImage;
+                        if(img) setLightboxImg(img);
+                      }}
+                   >
                       {generatedImage ? (
                           <>
                             <img src={generatedImage} alt="Generated" className="max-w-full max-h-full object-contain shadow-2xl" />
-                            <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                 <a href={generatedImage} download={getDynamicFilename('nai')} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
-                                {isOwner && <button onClick={handleSavePreview} disabled={isUploading} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1">{isUploading ? '上传中...' : '设为封面'}</button>}
+                                {isOwner && <button onClick={(e) => { e.stopPropagation(); handleSavePreview(); }} disabled={isUploading} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1">{isUploading ? '上传中...' : '设为封面'}</button>}
                             </div>
                           </>
                       ) : (
@@ -571,7 +583,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                         <span className="bg-black/50 text-white px-3 py-1 rounded text-xs">当前封面</span>
                                     </div>
-                                    <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                          <a href={chain.previewImage} download={getDynamicFilename('cover')} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
                                     </div>
                                 </>
@@ -580,7 +592,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                       
                       {/* Manual Upload Cover Button */}
                       {isOwner && (
-                         <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <div className="absolute bottom-4 right-4 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                              <input 
                                 type="file" 
                                 ref={fileInputRef}
@@ -593,7 +605,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                 disabled={isUploading}
                                 className="bg-gray-800/80 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-xs shadow-lg backdrop-blur"
                              >
-                                 {isUploading ? '上传中...' : '手动上传封面'}
+                                 {isUploading ? '上传中...' : '手动上传'}
                              </button>
                          </div>
                       )}
@@ -601,6 +613,16 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
               </div>
           </div>
       </div>
+
+      {/* Lightbox Modal */}
+      {lightboxImg && (
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
+            <img src={lightboxImg} className="max-w-full max-h-full object-contain rounded shadow-2xl" onClick={e => e.stopPropagation()} />
+            <button className="absolute top-4 right-4 text-white hover:text-gray-300" onClick={() => setLightboxImg(null)}>
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+      )}
     </div>
   );
 };

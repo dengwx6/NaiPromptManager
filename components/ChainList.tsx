@@ -17,8 +17,6 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  // Lightbox State
-  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   const handleCreate = () => {
     if (!newName.trim()) return;
@@ -56,31 +54,33 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
   );
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-8">
+    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-4 md:p-8">
       <div className="max-w-[1920px] mx-auto">
-        <header className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+        <header className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-10 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">我的画师串</h1>
-            <p className="text-gray-500 dark:text-gray-400">管理并迭代你的 NovelAI 提示词风格组合。</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2">我的画师串</h1>
+            <p className="text-sm md:text-base text-gray-500 dark:text-gray-400">管理并迭代你的 NovelAI 提示词风格组合。</p>
           </div>
-          <div className="flex gap-4">
-             <button 
-                onClick={onRefresh} 
-                className={`p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ${isLoading ? 'animate-spin' : ''}`}
-                title="刷新列表"
-             >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-             </button>
-             <input 
-                type="text" 
-                placeholder="搜索..." 
-                className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="flex flex-col md:flex-row gap-2 md:gap-4 w-full md:w-auto">
+             <div className="flex gap-2 w-full md:w-auto">
+                <button 
+                    onClick={onRefresh} 
+                    className={`p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ${isLoading ? 'animate-spin' : ''}`}
+                    title="刷新列表"
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                </button>
+                <input 
+                    type="text" 
+                    placeholder="搜索..." 
+                    className="flex-1 md:w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+             </div>
             <button
               onClick={() => setIsModalOpen(true)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20 flex items-center"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20 flex items-center justify-center md:justify-start"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               新建画师串
@@ -94,12 +94,12 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
             <button onClick={() => setIsModalOpen(true)} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium">创建第一个画师串</button>
           </div>
         ) : (
-          /* Grid Layout Adjustment: More columns for wider screens to fit 2 rows per page */
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          /* Grid Layout Adjustment: Single column for mobile, more columns for larger screens */
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filteredChains.map((chain) => (
               <div key={chain.id} onClick={() => onSelect(chain.id)} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-500/50 rounded-xl overflow-hidden transition-all duration-200 hover:shadow-xl hover:shadow-indigo-500/10 flex flex-col cursor-pointer relative">
                 {/* Copy Buttons Overlay */}
-                <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                     <button 
                         onClick={(e) => { e.stopPropagation(); copyFullPrompt(chain, false); }} 
                         className="bg-white/90 dark:bg-black/70 backdrop-blur p-1.5 rounded-full shadow-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200"
@@ -116,15 +116,9 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
                     </button>
                 </div>
 
-                {/* Preview Image: Changed from cover to contain, added background, click to enlarge */}
+                {/* Preview Image: Changed from cover to contain, added background */}
                 <div 
                     className="aspect-square bg-gray-200 dark:bg-gray-900 relative border-b border-gray-200 dark:border-gray-700 overflow-hidden flex items-center justify-center"
-                    onClick={(e) => {
-                        if (chain.previewImage) {
-                            e.stopPropagation();
-                            setLightboxImg(chain.previewImage);
-                        }
-                    }}
                 >
                     {chain.previewImage ? (
                         <div className="w-full h-full relative group/img">
@@ -133,10 +127,6 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
                                 alt={chain.name} 
                                 className="w-full h-full object-contain" 
                             />
-                            {/* Zoom Hint */}
-                            <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100">
-                                <svg className="w-8 h-8 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
-                            </div>
                         </div>
                     ) : (
                         <div className="text-gray-400 dark:text-gray-700">
@@ -147,7 +137,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
 
                 <div className="p-3 flex flex-col flex-1">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 truncate pr-2" title={chain.name}>{chain.name}</h3>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 truncate pr-2 w-full" title={chain.name}>{chain.name}</h3>
                   </div>
                   <p className="text-gray-500 dark:text-gray-400 text-xs mb-2 line-clamp-2 h-8 leading-tight">{chain.description || '暂无描述'}</p>
                   
@@ -170,8 +160,8 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
 
       {/* Simple Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 w-full max-w-md border border-gray-200 dark:border-gray-700 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 md:p-8 w-full max-w-md border border-gray-200 dark:border-gray-700 shadow-2xl">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">新建画师串</h2>
             <div className="space-y-4">
               <div>
@@ -200,16 +190,6 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
               <button onClick={handleCreate} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium">创建</button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Lightbox Modal */}
-      {lightboxImg && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
-            <img src={lightboxImg} className="max-w-full max-h-full object-contain rounded shadow-2xl" onClick={e => e.stopPropagation()} />
-            <button className="absolute top-4 right-4 text-white hover:text-gray-300" onClick={() => setLightboxImg(null)}>
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
         </div>
       )}
     </div>

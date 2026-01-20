@@ -142,10 +142,17 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
                   <p className="text-gray-500 dark:text-gray-400 text-xs mb-2 line-clamp-2 h-8 leading-tight">{chain.description || '暂无描述'}</p>
                   
                   <div className="mt-auto flex justify-between items-center pt-2 border-t border-gray-100 dark:border-gray-700/50">
-                     <span className="text-[10px] text-gray-400 dark:text-gray-500">{new Date(chain.updatedAt).toLocaleDateString()}</span>
+                     <div className="flex flex-col min-w-0 mr-2">
+                        <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 truncate" title={chain.username}>
+                            @{chain.username || 'Unknown'}
+                        </span>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                            {new Date(chain.updatedAt).toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                     </div>
                      <button
                       onClick={(e) => { e.stopPropagation(); if(confirm('确认删除?')) onDelete(chain.id); }}
-                      className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex-shrink-0"
                       title="删除"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>

@@ -48,7 +48,7 @@ interface Env {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie, Server-Timing',
   'Access-Control-Allow-Credentials': 'true',
 };
 
@@ -126,6 +126,7 @@ function parseCookies(request: Request) {
 }
 
 // Helper: Process Base64 Image and Upload to R2 with Quota Check
+// Note: This is kept for Legacy Base64 uploads (e.g. from canvas or old API calls)
 async function processImageUpload(
     env: Env, 
     imageData: string, 
@@ -193,7 +194,6 @@ export default {
         if (!env.BUCKET) return error('Bucket not configured', 503);
         
         // Extract key from path: /api/assets/folder/file.png -> folder/file.png
-        // FIX: Add decodeURIComponent to handle spaces and special chars in filenames
         const rawKey = path.replace('/api/assets/', '');
         const key = decodeURIComponent(rawKey);
         
@@ -248,8 +248,6 @@ export default {
         const admin = await db.prepare('SELECT * FROM users WHERE username = ?').bind('admin').first();
         if (!admin) {
             const adminId = crypto.randomUUID();
-            // Note: Default admin password stored in plain text initially. 
-            // It will be auto-hashed upon first login.
             await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)')
               .bind(adminId, 'admin', 'admin_996', 'admin', Date.now()).run();
         }
@@ -297,33 +295,25 @@ export default {
           const { username, password } = await request.json() as any;
           try { await db.prepare('SELECT 1 FROM users').first(); } catch(e) { await initDB(); }
 
-          // 1. Fetch user by username ONLY
           const user = await db.prepare('SELECT * FROM users WHERE username = ?')
               .bind(username).first<{id: string, role: string, storage_usage: number, password: string}>();
 
           if (!user) return error('用户名或密码错误', 401);
 
-          // 2. Password Verification Logic
           let isValid = false;
           let needMigration = false;
 
-          // Try verifying as bcrypt hash
-          // Note: bcrypt strings usually start with $2a$, $2b$ etc.
-          // Plain text won't match, so this is safe.
           isValid = await bcrypt.compare(password, user.password);
 
-          // If hash check failed, fallback to plain text check (Legacy Support)
           if (!isValid && user.password === password) {
               isValid = true;
-              needMigration = true; // Mark for upgrade
+              needMigration = true; 
           }
 
           if (!isValid) return error('用户名或密码错误', 401);
 
-          // 3. Lazy Migration: Update plain text to hash in background
           if (needMigration) {
               const newHash = await bcrypt.hash(password, 10);
-              // Fire and forget update (or await if critical, but non-blocking is better for speed)
               await db.prepare('UPDATE users SET password = ? WHERE id = ?')
                   .bind(newHash, user.id).run();
           }
@@ -383,10 +373,13 @@ export default {
       const currentUser = await getSessionUser();
       if (!currentUser) return error('Unauthorized', 401);
 
-      // --- NEW: Binary Upload Endpoint (Multipart) ---
+      // --- NEW: Binary Upload Endpoint (Multipart with Streaming) ---
       if (path === '/api/upload' && method === 'POST') {
           if (!env.BUCKET) return error('R2 Bucket not configured', 503);
           
+          const timings: string[] = [];
+          const startTotal = performance.now();
+
           const formData = await request.formData();
           const file = formData.get('file');
 
@@ -397,28 +390,41 @@ export default {
           const folder = formData.get('folder') as string || 'misc';
           const ext = file.name.split('.').pop() || 'png';
           const filename = `${folder}/${currentUser.id}_${Date.now()}.${ext}`;
-          
-          const arrayBuffer = await file.arrayBuffer();
-          const fileSize = arrayBuffer.byteLength;
+          const fileSize = file.size; // Use size from metadata, no arrayBuffer needed yet
 
-          // Quota Check
+          // 1. DB Check (Quota)
+          // We rely on currentUser.storage_usage which was fetched at start of request.
+          // This avoids an extra DB call here.
+          const startDbCheck = performance.now();
           if (currentUser.role !== 'admin') {
               const currentUsage = currentUser.storage_usage || 0;
               if (currentUsage + fileSize > MAX_STORAGE_QUOTA) {
                   return error(`Storage quota exceeded. Limit: 300MB`, 413);
               }
           }
+          timings.push(`db_check;dur=${(performance.now() - startDbCheck).toFixed(2)}`);
 
-          // Upload to R2
-          await env.BUCKET.put(filename, arrayBuffer, {
+          // 2. R2 Put (Streaming)
+          // Using file.stream() pipes the data directly to R2 without buffering the whole file in worker memory
+          const startR2 = performance.now();
+          await env.BUCKET.put(filename, file.stream(), {
               httpMetadata: { contentType: file.type }
           });
+          timings.push(`r2_put;dur=${(performance.now() - startR2).toFixed(2)}`);
 
-          // Update Usage
+          // 3. DB Update (Usage)
+          const startDbUp = performance.now();
           await db.prepare('UPDATE users SET storage_usage = COALESCE(storage_usage, 0) + ? WHERE id = ?')
               .bind(fileSize, currentUser.id).run();
+          timings.push(`db_update;dur=${(performance.now() - startDbUp).toFixed(2)}`);
+          
+          timings.push(`total;dur=${(performance.now() - startTotal).toFixed(2)}`);
 
-          return json({ url: `/api/assets/${filename}`, size: fileSize });
+          return json(
+              { url: `/api/assets/${filename}`, size: fileSize }, 
+              200, 
+              { 'Server-Timing': timings.join(', ') }
+          );
       }
 
       // --- User Management ---
@@ -427,7 +433,6 @@ export default {
           const { username, password } = await request.json() as any;
           if (!username || !password) return error('Missing fields', 400);
           
-          // UPDATED: Hash password before creating user
           const hashedPassword = await bcrypt.hash(password, 10);
 
           try {
@@ -445,7 +450,6 @@ export default {
           const { password } = await request.json() as any;
           if (!password) return error('Missing password', 400);
           
-          // UPDATED: Hash password before updating
           const hashedPassword = await bcrypt.hash(password, 10);
 
           await db.prepare('UPDATE users SET password = ? WHERE id = ?')
@@ -488,10 +492,8 @@ export default {
         const now = Date.now();
         const basePrompt = body.basePrompt || 'masterpiece, best quality';
         const negPrompt = body.negativePrompt || 'lowres, bad anatomy';
-        // Updated Default module with position: 'post'
         const modules = body.modules ? JSON.stringify(body.modules) : JSON.stringify([{ id: crypto.randomUUID(), name: "光照", content: "cinematic lighting", isActive: true, position: 'post' }]);
         const params = body.params ? JSON.stringify(body.params) : JSON.stringify({ width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' });
-        // UPDATE: Default variable_values to include subject: '1girl'
         const vars = body.variableValues ? JSON.stringify(body.variableValues) : JSON.stringify({ subject: '1girl' });
 
         await db.prepare(
@@ -517,10 +519,7 @@ export default {
         const fields = [];
         const values = [];
         
-        // --- Legacy Base64 Support & Delete Old Image Logic ---
-        // If the new previewImage is DIFFERENT from the old one, we might want to clean up the old one
         if (updates.previewImage && chain.preview_image && chain.preview_image !== updates.previewImage) {
-             // Only delete if it's an internal asset
              if (env.BUCKET && chain.preview_image.startsWith('/api/assets/')) {
                  try {
                      const oldKey = chain.preview_image.replace('/api/assets/', '');
@@ -531,7 +530,6 @@ export default {
              }
         }
         
-        // If sending base64 (Legacy fallback), process it
         if (updates.previewImage && updates.previewImage.startsWith('data:')) {
              try {
                 const r2Url = await processImageUpload(env, updates.previewImage, 'covers', id, currentUser);
@@ -567,8 +565,6 @@ export default {
                 return error('Permission Denied', 403);
             }
             await db.prepare('DELETE FROM chains WHERE id = ?').bind(id).run();
-            // Note: Currently we don't decrement storage on delete because R2 delete doesn't return size easily without extra DB columns.
-            // This is a known trade-off for simplicity.
         }
         return json({ success: true });
       }
@@ -576,7 +572,6 @@ export default {
       // --- Artists ---
       if (path === '/api/artists' && method === 'GET') {
          const res = await db.prepare('SELECT * FROM artists ORDER BY name ASC').all();
-         // Fix: Map image_url to imageUrl to match frontend types
          return json(res.results.map((a: any) => ({
              id: a.id,
              name: a.name,
@@ -587,7 +582,6 @@ export default {
         if (currentUser.role !== 'admin') return error('Forbidden', 403);
         const body = await request.json() as any;
         
-        // Admin upload, no quota check needed
         if (body.imageUrl && body.imageUrl.startsWith('data:')) {
              body.imageUrl = await processImageUpload(env, body.imageUrl, 'artists', body.id || crypto.randomUUID());
         }
@@ -615,10 +609,8 @@ export default {
         const body = await request.json() as any;
         let imageUrl = body.imageUrl;
 
-        // --- Process Image Upload to R2 ---
         if (imageUrl && imageUrl.startsWith('data:')) {
             try {
-                // Pass user for quota check
                 imageUrl = await processImageUpload(env, imageUrl, 'inspirations', body.id || crypto.randomUUID(), currentUser);
             } catch (e: any) {
                 return error(`Image upload failed: ${e.message}`, 413);
@@ -630,7 +622,6 @@ export default {
         return json({ success: true });
       }
       
-      // Bulk Delete Inspirations
       if (path === '/api/inspirations/bulk-delete' && method === 'POST') {
           const { ids } = await request.json() as { ids: string[] };
           if (!ids || ids.length === 0) return json({ success: true });
@@ -645,7 +636,6 @@ export default {
           return json({ success: true });
       }
 
-      // Update Inspiration
       if (path.startsWith('/api/inspirations/') && method === 'PUT') {
          const id = path.split('/').pop();
          const updates = await request.json() as any;

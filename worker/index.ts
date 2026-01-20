@@ -165,7 +165,7 @@ async function processImageUpload(
     }
 
     // Upload to R2
-    // Use bytes.buffer to pass ArrayBuffer instead of Uint8Array to satisfy the interface
+    // FIXED: Use bytes.buffer to pass ArrayBuffer instead of Uint8Array to satisfy the interface
     await env.BUCKET.put(filename, bytes.buffer, {
         httpMetadata: { contentType: `image/${ext}` }
     });
@@ -224,14 +224,16 @@ export default {
     const initDB = async () => {
       const statements = INIT_SQL.split(';').map(s => s.trim()).filter(s => s.length > 0);
       for (const sql of statements) {
-          await db.prepare(sql).run();
+          try { await db.prepare(sql).run(); } catch(e) {}
       }
       // Migration for storage_usage column
-      try {
-          await db.prepare("ALTER TABLE users ADD COLUMN storage_usage INTEGER DEFAULT 0").run();
-      } catch (e) {
-          // Column likely exists
-      }
+      try { await db.prepare("ALTER TABLE users ADD COLUMN storage_usage INTEGER DEFAULT 0").run(); } catch (e) {}
+      
+      // Migrations for other columns
+      try { await db.prepare("ALTER TABLE chains ADD COLUMN user_id TEXT").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE chains ADD COLUMN username TEXT").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE inspirations ADD COLUMN user_id TEXT").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE inspirations ADD COLUMN username TEXT").run(); } catch (e) {}
 
       // Create Default Admin if not exists
       try {
@@ -255,8 +257,20 @@ export default {
         
         if (!session) return null;
 
-        return await db.prepare('SELECT id, username, role, storage_usage FROM users WHERE id = ?')
-            .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number}>();
+        // Auto-heal: try query, if fail (e.g. missing column), run initDB and retry
+        try {
+            return await db.prepare('SELECT id, username, role, storage_usage FROM users WHERE id = ?')
+                .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number}>();
+        } catch (e: any) {
+             if (e.message && e.message.includes('no such column')) {
+                 console.log('Detected missing column, running migration...');
+                 await initDB();
+                 // Retry once
+                 return await db.prepare('SELECT id, username, role, storage_usage FROM users WHERE id = ?')
+                    .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number}>();
+             }
+             throw e;
+        }
     };
 
     try {
@@ -375,14 +389,6 @@ export default {
 
       // --- Chains ---
       if (path === '/api/chains' && method === 'GET') {
-        try { await db.prepare('SELECT user_id FROM chains LIMIT 1').run(); } 
-        catch { 
-           try { await db.prepare("ALTER TABLE chains ADD COLUMN user_id TEXT").run(); } catch {}
-           try { await db.prepare("ALTER TABLE chains ADD COLUMN username TEXT").run(); } catch {}
-           try { await db.prepare("ALTER TABLE inspirations ADD COLUMN user_id TEXT").run(); } catch {}
-           try { await db.prepare("ALTER TABLE inspirations ADD COLUMN username TEXT").run(); } catch {}
-        }
-
         const chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
         const data = chainsResult.results.map((c: any) => ({
           id: c.id, userId: c.user_id, username: c.username, name: c.name, description: c.description,

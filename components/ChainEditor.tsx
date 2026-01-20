@@ -5,7 +5,6 @@ import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { localHistory } from '../services/localHistory';
 import { api } from '../services/api';
-import { compressImage } from '../services/imageUtils'; // Import compression tool
 
 interface ChainEditorProps {
   chain: PromptChain;
@@ -258,12 +257,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
             const res = await fetch(generatedImage);
             const blob = await res.blob();
             
-            // COMPRESSION STEP
-            // Resize to max 1024px width/height and convert to WebP 0.85
-            const compressedFile = await compressImage(blob, 1024, 0.85);
+            // Create proper File object for upload
+            const file = new File([blob], getDynamicFilename('cover'), { type: 'image/png' });
 
-            // 1. Upload Binary (Compressed)
-            const uploadRes = await api.uploadFile(compressedFile, 'covers');
+            // 1. Upload Binary (Direct)
+            const uploadRes = await api.uploadFile(file, 'covers');
             
             // 2. Update Chain with URL
             await onUpdateChain(chain.id, { previewImage: uploadRes.url });
@@ -284,11 +282,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       if(confirm('您确定要上传新封面吗？\n\n警告：此操作将永久删除旧的封面图文件。')) {
           setIsUploading(true);
           try {
-              // COMPRESSION STEP
-              const compressedFile = await compressImage(file, 1024, 0.85);
-
-              // 1. Upload Binary
-              const res = await api.uploadFile(compressedFile, 'covers');
+              // 1. Upload Binary (Direct)
+              const res = await api.uploadFile(file, 'covers');
               
               // 2. Update Chain with URL
               await onUpdateChain(chain.id, { previewImage: res.url });

@@ -43,7 +43,7 @@ interface Env {
   BUCKET?: R2Bucket; // R2 Binding
   MASTER_KEY: string; 
   R2_PUBLIC_URL?: string; // Kept for legacy compatibility if needed
-  GUEST_PASSCODE?: string; // Guest Access Code
+  // GUEST_PASSCODE removed, now stored in DB
 }
 
 const corsHeaders = {
@@ -259,8 +259,9 @@ export default {
         const guest = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first();
         if (!guest) {
             const guestId = 'guest-0000-0000-0000-000000000000'; // Static ID for guest
+            // Default passcode stored in 'password' field as plaintext
             await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)')
-              .bind(guestId, 'guest', 'guest_access', 'guest', Date.now()).run();
+              .bind(guestId, 'guest', 'nai_guest_123', 'guest', Date.now()).run();
         }
       } catch (e) { console.error('Guest init failed', e) }
     };
@@ -306,16 +307,17 @@ export default {
           const { passcode } = await request.json() as any;
           if (!passcode) return error('请输入访问口令', 400);
           
-          if (passcode !== env.GUEST_PASSCODE) {
-              return error('访问口令错误', 401);
-          }
-
           // Ensure guest user exists (lazy check)
           try { await db.prepare('SELECT 1 FROM users WHERE role = ?').bind('guest').first(); } catch(e) { await initDB(); }
           
-          const guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string}>();
+          const guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>();
           
           if (!guestUser) return error('Guest user configuration error', 500);
+
+          // Plaintext check for guest passcode
+          if (passcode !== guestUser.password) {
+              return error('访问口令错误', 401);
+          }
 
           const sessionId = crypto.randomUUID();
           const expiresAt = Date.now() + 1 * 24 * 60 * 60 * 1000; // 1 day for guests
@@ -394,6 +396,22 @@ export default {
       // --- Protected Routes Logic ---
       const currentUser = await getSessionUser();
       if (!currentUser) return error('Unauthorized', 401);
+
+      // --- Admin: Guest Settings ---
+      if (path === '/api/admin/guest-setting' && method === 'GET') {
+          if (currentUser.role !== 'admin') return error('Forbidden', 403);
+          const guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>();
+          if (!guest) return error('Guest user not found', 404);
+          return json({ passcode: guest.password });
+      }
+
+      if (path === '/api/admin/guest-setting' && method === 'PUT') {
+          if (currentUser.role !== 'admin') return error('Forbidden', 403);
+          const { passcode } = await request.json() as any;
+          if (!passcode) return error('Missing passcode', 400);
+          await db.prepare('UPDATE users SET password = ? WHERE role = ?').bind(passcode, 'guest').run();
+          return json({ success: true });
+      }
 
       // --- NAI Proxy (With Guest Guard Removed) ---
       if (path === '/api/generate' && method === 'POST') {

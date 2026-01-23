@@ -402,10 +402,10 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           </button>
           
           {isEditingInfo && isOwner ? (
-              <div className="flex flex-col md:flex-row gap-2 flex-1 w-full max-w-2xl">
-                  <input type="text" value={chainName} onChange={e => {setChainName(e.target.value); setHasChanges(true)}} className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-900 dark:text-white text-sm focus:border-indigo-500 outline-none font-bold" placeholder="名称" />
+              <div className="flex flex-col md:flex-row gap-2 flex-1 w-full max-w-2xl min-w-0">
+                  <input type="text" value={chainName} onChange={e => {setChainName(e.target.value); setHasChanges(true)}} className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-900 dark:text-white text-sm focus:border-indigo-500 outline-none font-bold min-w-0" placeholder="名称" />
                   <div className="flex gap-2">
-                    <input type="text" value={chainDesc} onChange={e => {setChainDesc(e.target.value); setHasChanges(true)}} className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-700 dark:text-gray-300 text-sm focus:border-indigo-500 outline-none" placeholder="描述" />
+                    <input type="text" value={chainDesc} onChange={e => {setChainDesc(e.target.value); setHasChanges(true)}} className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-700 dark:text-gray-300 text-sm focus:border-indigo-500 outline-none min-w-0" placeholder="描述" />
                     <button 
                         onClick={() => setIsEditingInfo(false)} 
                         className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-sm font-medium flex-shrink-0 whitespace-nowrap"
@@ -415,10 +415,10 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   </div>
               </div>
           ) : (
-             <div className="flex items-center gap-2 group cursor-pointer min-w-0" onClick={() => isOwner && setIsEditingInfo(true)}>
-                <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2 overflow-hidden">
-                    <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate">{chainName}</h1>
-                    <span className="text-xs text-gray-500 dark:text-gray-500 truncate block max-w-[150px] md:max-w-xs">{chainDesc}</span>
+             <div className="flex items-center gap-2 group cursor-pointer min-w-0 flex-1" onClick={() => isOwner && setIsEditingInfo(true)}>
+                <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2 overflow-hidden min-w-0">
+                    <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate min-w-0">{chainName}</h1>
+                    <span className="text-xs text-gray-500 dark:text-gray-500 truncate block max-w-full md:max-w-xs min-w-0">{chainDesc}</span>
                 </div>
                 {isOwner && <svg className="w-4 h-4 text-gray-400 opacity-50 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}
              </div>
@@ -635,7 +635,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
 
               {/* Sticky Footer for Save Actions */}
               {isOwner && (
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shadow-lg transform transition-transform duration-300 z-10">
+                <div className="fixed bottom-16 left-0 right-0 md:absolute md:bottom-0 p-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shadow-lg transform transition-transform duration-300 z-10">
                     <div className="text-sm text-gray-500">
                         {hasChanges ? <span className="text-yellow-600 dark:text-yellow-500 font-medium">⚠️ 未保存</span> : <span className="text-green-600 dark:text-green-500">✅ 已保存</span>}
                     </div>

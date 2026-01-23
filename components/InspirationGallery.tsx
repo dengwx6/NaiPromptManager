@@ -150,8 +150,8 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden relative">
       {/* Header */}
-      <header className="p-4 md:p-6 bg-white dark:bg-gray-800 shadow-md flex flex-col md:flex-row gap-4 items-center justify-between border-b border-gray-200 dark:border-gray-700 z-10 flex-shrink-0">
-          <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
+      <header className="p-4 md:p-6 bg-white dark:bg-gray-800 shadow-md flex flex-col gap-4 items-stretch border-b border-gray-200 dark:border-gray-700 z-10 flex-shrink-0">
+          <div className="flex justify-between items-center">
              <div>
                  <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">灵感图库</h1>
                  <p className="text-xs text-gray-500 dark:text-gray-400">收藏优秀的生成结果与 Prompt</p>
@@ -166,10 +166,10 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
             </button>
           </div>
           
-          <div className="flex gap-2 items-center w-full md:w-auto">
+          <div className="flex gap-2 items-center w-full flex-wrap">
               {selectionMode ? (
                   <>
-                    <span className="text-sm text-gray-500">已选 {selectedIds.size}</span>
+                    <span className="text-sm text-gray-500 flex-1">已选 {selectedIds.size}</span>
                     <button onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 md:px-4 md:py-2 rounded text-sm">删除</button>
                     <button onClick={() => {setSelectionMode(false); setSelectedIds(new Set())}} className="text-gray-500 px-3">取消</button>
                   </>
@@ -178,7 +178,7 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
                     <input 
                         type="text" 
                         placeholder="搜索..." 
-                        className="flex-1 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-full px-4 py-2 text-sm outline-none"
+                        className="flex-1 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-full px-4 py-2 text-sm outline-none min-w-0"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />

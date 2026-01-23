@@ -37,6 +37,16 @@ class DBService {
       await api.delete(`/users/${id}`);
   }
 
+  // --- Admin: Guest Settings ---
+  async getGuestCode(): Promise<string> {
+      const res = await api.get('/admin/guest-setting');
+      return res.passcode;
+  }
+
+  async updateGuestCode(passcode: string): Promise<void> {
+      await api.put('/admin/guest-setting', { passcode });
+  }
+
   // --- Chains ---
   async getAllChains(): Promise<PromptChain[]> {
     return await api.get('/chains');

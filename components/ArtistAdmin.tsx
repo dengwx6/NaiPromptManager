@@ -35,6 +35,10 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
 
+  // Guest Code State
+  const [guestCode, setGuestCode] = useState('');
+  const [isUpdatingGuest, setIsUpdatingGuest] = useState(false);
+
   // Profile State
   const [myNewPassword, setMyNewPassword] = useState('');
 
@@ -111,6 +115,23 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       }
   };
 
+  // Fetch Guest Code when Users Tab is active
+  useEffect(() => {
+      if (isAdmin && activeTab === 'users') {
+          db.getGuestCode().then(setGuestCode).catch(console.error);
+      }
+  }, [activeTab, isAdmin]);
+
+  const handleUpdateGuestCode = async () => {
+      if (!guestCode) return;
+      setIsUpdatingGuest(true);
+      try {
+          await db.updateGuestCode(guestCode);
+          alert('游客口令已更新');
+      } catch(e) { alert('更新失败'); }
+      setIsUpdatingGuest(false);
+  };
+
   const handleChangePassword = async () => {
       if(!myNewPassword) return;
       await db.updatePassword(myNewPassword);
@@ -161,11 +182,11 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <h2 className="font-bold dark:text-white mb-4">{editingId ? '编辑画师' : '添加画师'}</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <input type="text" value={artistName} onChange={e => setArtistName(e.target.value)} className="p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="画师名称" />
+                            <input type="text" value={artistName} onChange={e => setArtistName(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="画师名称" />
                             <div className="flex gap-2">
                                 <input type="file" onChange={handleFileUpload} className="hidden" id="art-up" />
-                                <label htmlFor="art-up" className="px-3 py-2 bg-gray-200 rounded cursor-pointer text-sm flex items-center hover:bg-gray-300 transition-colors">上传</label>
-                                <input type="text" value={artistImg} onChange={e => setArtistImg(e.target.value)} className="flex-1 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="图片 URL/Base64" />
+                                <label htmlFor="art-up" className="px-3 py-2 bg-gray-200 rounded cursor-pointer text-sm flex items-center hover:bg-gray-300 transition-colors whitespace-nowrap">上传</label>
+                                <input type="text" value={artistImg} onChange={e => setArtistImg(e.target.value)} className="flex-1 min-w-0 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="图片 URL/Base64" />
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -194,15 +215,39 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
         {/* --- USER TAB --- */}
         {activeTab === 'users' && isAdmin && (
-            <>
-                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl mb-8 shadow">
+            <div className="space-y-6">
+                {/* Create User Block */}
+                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
                     <h2 className="font-bold dark:text-white mb-4">创建用户</h2>
-                    <div className="flex gap-4 mb-4">
-                        <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="用户名" />
-                        <input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="密码" />
-                        <button onClick={handleCreateUser} className="bg-indigo-600 text-white px-4 rounded">创建</button>
+                    <div className="flex flex-col md:flex-row gap-4 mb-4">
+                        <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="flex-1 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="用户名" />
+                        <input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="flex-1 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="密码" />
+                        <button onClick={handleCreateUser} className="bg-indigo-600 text-white px-4 py-2 rounded">创建</button>
                     </div>
                 </div>
+
+                {/* Guest Settings Block */}
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 p-6 rounded-xl shadow">
+                    <h2 className="font-bold text-yellow-800 dark:text-yellow-200 mb-2">游客访问设置</h2>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-4">设置游客登录时使用的全局口令 (存储于数据库 users 表 guest 账户)</p>
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <input 
+                            type="text" 
+                            value={guestCode} 
+                            onChange={e => setGuestCode(e.target.value)} 
+                            className="flex-1 p-2 border border-yellow-300 dark:border-yellow-700 rounded bg-white dark:bg-gray-900 dark:text-white" 
+                            placeholder="游客口令" 
+                        />
+                        <button 
+                            onClick={handleUpdateGuestCode} 
+                            disabled={isUpdatingGuest}
+                            className="bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
+                        >
+                            {isUpdatingGuest ? '更新中...' : '更新口令'}
+                        </button>
+                    </div>
+                </div>
+
                 <div className="overflow-x-auto">
                     <table className="w-full bg-white dark:bg-gray-800 rounded shadow">
                         <thead><tr className="text-left border-b dark:border-gray-700 text-gray-500 p-2"><th className="p-4">用户名</th><th className="p-4">角色</th><th className="p-4">注册时间</th><th className="p-4">操作</th></tr></thead>
@@ -213,14 +258,14 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                     <td className="p-4"><span className={`px-2 py-1 rounded text-xs ${u.role === 'admin' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{u.role}</span></td>
                                     <td className="p-4 text-sm text-gray-500">{new Date(u.createdAt).toLocaleDateString()}</td>
                                     <td className="p-4">
-                                        {u.id !== currentUser.id && <button onClick={() => handleDeleteUser(u.id)} className="text-red-500">删除</button>}
+                                        {u.id !== currentUser.id && u.role !== 'guest' && <button onClick={() => handleDeleteUser(u.id)} className="text-red-500">删除</button>}
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-            </>
+            </div>
         )}
 
         {/* --- PROFILE TAB --- */}

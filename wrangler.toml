@@ -17,4 +17,4 @@ binding = "BUCKET"
 bucket_name = "nai-assets" # 请替换为你真实创建的 Bucket 名称
 
 [vars]
-GUEST_PASSCODE = "leinao" # 默认游客口令，部署后请在后台修改或修改此处
+GUEST_PASSCODE = "nai_guest_123" # 默认游客口令，部署后请在后台修改或修改此处

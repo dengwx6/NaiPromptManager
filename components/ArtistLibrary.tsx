@@ -106,6 +106,12 @@ interface GenTask {
     slot: number;
 }
 
+interface LogEntry {
+    time: string;
+    message: string;
+    type: 'success' | 'error' | 'info';
+}
+
 export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -130,13 +136,23 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
   // Benchmark Settings
   const [showConfig, setShowConfig] = useState(false);
   const [config, setConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+  
+  // -- Config Editor State (Draft Mode) --
+  const [draftConfig, setDraftConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+  const [slotToDelete, setSlotToDelete] = useState<number | null>(null); // For deletion confirmation
+
   const [apiKey, setApiKey] = useState('');
 
   // Queue System
   const [taskQueue, setTaskQueue] = useState<GenTask[]>([]);
+  const [failedTasks, setFailedTasks] = useState<GenTask[]>([]); // New: Failed Queue
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isPaused, setIsPaused] = useState(false); // New Pause State
+  const [isPaused, setIsPaused] = useState(false); 
   const [currentTask, setCurrentTask] = useState<GenTask | null>(null);
+  
+  // Logs System
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
 
   // Load data & Config
   useEffect(() => {
@@ -318,34 +334,68 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     }
   };
 
+  // --- Config Modal Logic (Refactored to Draft Mode) ---
+  
+  const openConfig = () => {
+      setDraftConfig(JSON.parse(JSON.stringify(config))); // Deep copy active config to draft
+      setShowConfig(true);
+  };
+
   const saveConfig = () => {
       // Basic validation
-      if (config.slots.length === 0) {
+      if (draftConfig.slots.length === 0) {
           notify('至少需要一个测试分组', 'error');
           return;
       }
-      localStorage.setItem('nai_benchmark_config', JSON.stringify(config));
+      // Apply Draft to Real Config
+      setConfig(draftConfig);
+      localStorage.setItem('nai_benchmark_config', JSON.stringify(draftConfig));
+      
+      // Safety: if active slot was deleted, reset to 0
+      if (activeSlot >= draftConfig.slots.length) {
+          setActiveSlot(0);
+      }
+      
       setShowConfig(false);
       notify('配置已保存');
   };
 
-  // Config Modal Helper Functions
+  // Helper Functions operate on DRAFT config now
   const updateSlot = (index: number, field: keyof BenchmarkSlot, value: string) => {
-      const newSlots = [...config.slots];
+      const newSlots = [...draftConfig.slots];
       newSlots[index] = { ...newSlots[index], [field]: value };
-      setConfig({ ...config, slots: newSlots });
+      setDraftConfig({ ...draftConfig, slots: newSlots });
   };
 
   const addSlot = () => {
-      setConfig({
-          ...config,
-          slots: [...config.slots, { label: `分组 ${config.slots.length + 1}`, prompt: "" }]
+      setDraftConfig({
+          ...draftConfig,
+          slots: [...draftConfig.slots, { label: `分组 ${draftConfig.slots.length + 1}`, prompt: "" }]
       });
   };
 
-  const removeSlot = (index: number) => {
-      const newSlots = config.slots.filter((_, i) => i !== index);
-      setConfig({ ...config, slots: newSlots });
+  // Trigger Confirmation instead of direct delete
+  const handleDeleteClick = (index: number) => {
+      setSlotToDelete(index);
+  };
+
+  // Actual Delete Logic
+  const confirmDeleteSlot = () => {
+      if (slotToDelete === null) return;
+      const newSlots = draftConfig.slots.filter((_, i) => i !== slotToDelete);
+      setDraftConfig({ ...draftConfig, slots: newSlots });
+      setSlotToDelete(null); // Close confirmation
+  };
+
+  // Helper Log
+  const addLog = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
+      const entry: LogEntry = {
+          time: new Date().toLocaleTimeString(),
+          message: msg,
+          type
+      };
+      setLogs(prev => [entry, ...prev].slice(0, 100)); // Keep last 100 logs
+      console.log(`[Queue] ${msg}`);
   };
 
   // --- Queue Processor ---
@@ -354,15 +404,18 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
           // Check Pause state
           if (isProcessing || taskQueue.length === 0 || isPaused) return;
           
-          const task = taskQueue[0];
+          // Delay to prevent 429 (Throttle)
           setIsProcessing(true);
+          await new Promise(res => setTimeout(res, 2500)); // 2.5s safe delay
+
+          const task = taskQueue[0];
           setCurrentTask(task);
 
           try {
               // Find the artist info
               const artist = artistsData?.find(a => a.id === task.artistId);
               if (!artist) {
-                  throw new Error(`Artist ${task.artistId} not found`);
+                  throw new Error(`Artist ID ${task.artistId} not found`);
               }
 
               // Actual generation Logic
@@ -397,10 +450,25 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
               // Refresh UI
               await onRefresh();
+              addLog(`Generated: ${artist.name} (Slot ${task.slot + 1})`, 'success');
 
           } catch (err: any) {
-              console.error(err);
-              notify(`生成失败: ${err.message}`, 'error');
+              const errMsg = err.message || JSON.stringify(err);
+              const is429 = errMsg.includes('429') || errMsg.includes('Concurrent') || errMsg.includes('locked');
+              
+              const artistName = artistsData?.find(a => a.id === task.artistId)?.name || 'Unknown';
+              const logMsg = is429 
+                ? `Rate Limit (429) for ${artistName}. Task moved to Retry Queue.` 
+                : `Failed: ${artistName} - ${errMsg}`;
+              
+              addLog(logMsg, 'error');
+              
+              // Move to Failed Queue instead of discarding
+              setFailedTasks(prev => [...prev, task]);
+              
+              if (!is429) {
+                  notify(`生成失败: ${artistName}`, 'error');
+              }
           } finally {
               // Remove done task and loop
               setTaskQueue(prev => prev.slice(1));
@@ -418,7 +486,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       e.stopPropagation();
       if (!apiKey) {
           notify('请先在设置中配置 API Key', 'error');
-          setShowConfig(true);
+          openConfig(); // Use new opener
           return;
       }
 
@@ -430,6 +498,14 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
       setTaskQueue(prev => [...prev, ...newTasks]);
       notify(`已添加 ${newTasks.length} 个任务到队列`);
+  };
+
+  const retryFailedTasks = () => {
+      if (failedTasks.length === 0) return;
+      setTaskQueue(prev => [...prev, ...failedTasks]);
+      setFailedTasks([]);
+      addLog(`Retrying ${failedTasks.length} failed tasks`, 'info');
+      notify(`已重新加入 ${failedTasks.length} 个失败任务`);
   };
 
   return (
@@ -481,7 +557,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             {viewMode === 'benchmark' && (
                 <>
                     <button 
-                        onClick={() => setShowConfig(true)}
+                        onClick={openConfig} // Changed to openConfig
                         className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0"
                         title="配置分组"
                     >
@@ -505,14 +581,22 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
             {/* Settings Group */}
             <div className="flex gap-2 items-center ml-auto">
-                {taskQueue.length > 0 && (
-                    <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-800">
-                         <span className="text-xs font-mono text-indigo-600 dark:text-indigo-300">
-                             Queue: {taskQueue.length}
+                {/* Queue / Log Button */}
+                {(taskQueue.length > 0 || failedTasks.length > 0 || logs.length > 0) && (
+                    <div className={`flex items-center gap-1 px-2 py-1 rounded border cursor-pointer select-none transition-colors ${
+                            failedTasks.length > 0 
+                            ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800' 
+                            : 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-100 dark:border-indigo-800'
+                        }`}
+                        onClick={() => setShowLogs(true)}
+                        title="点击查看生成日志"
+                    >
+                         <span className={`text-xs font-mono ${failedTasks.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-300'}`}>
+                             Wait:{taskQueue.length} {failedTasks.length > 0 && `| Fail:${failedTasks.length}`}
                          </span>
                          {/* Pause/Resume Button */}
                          <button 
-                            onClick={() => setIsPaused(!isPaused)}
+                            onClick={(e) => { e.stopPropagation(); setIsPaused(!isPaused); }}
                             className={`w-5 h-5 flex items-center justify-center rounded hover:bg-white dark:hover:bg-black/20 ${isPaused ? 'text-yellow-600 animate-pulse' : 'text-indigo-600'}`}
                             title={isPaused ? "恢复队列" : "暂停队列"}
                          >
@@ -525,6 +609,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                          {isProcessing && !isPaused && <div className="w-2 h-2 rounded-full bg-green-500 animate-ping"></div>}
                     </div>
                 )}
+                
                 <button 
                     onClick={() => setShowImport(true)} 
                     title="批量导入"
@@ -610,6 +695,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                  // Task status
                  const isTaskPending = taskQueue.some(t => t.artistId === artist.id);
                  const isTaskRunning = currentTask?.artistId === artist.id;
+                 const isTaskFailed = failedTasks.some(t => t.artistId === artist.id);
                  
                  return (
                      <div 
@@ -630,10 +716,12 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                              )}
                              
                              {/* Task Status Overlay */}
-                             {(isTaskPending || isTaskRunning) && (
+                             {(isTaskPending || isTaskRunning || isTaskFailed) && (
                                  <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-10">
                                      {isTaskRunning ? (
                                          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+                                     ) : isTaskFailed ? (
+                                          <div className="text-white text-xs font-bold bg-red-500 px-2 py-1 rounded">Failed</div>
                                      ) : (
                                          <div className="text-white text-xs font-bold bg-indigo-500 px-2 py-1 rounded">Queue</div>
                                      )}
@@ -745,6 +833,45 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       </div>
       {showHistory && <div className="fixed inset-0 z-30 bg-black/20 dark:bg-black/50 backdrop-blur-[1px]" onClick={() => setShowHistory(false)} />}
 
+      {/* --- Logs Modal --- */}
+      {showLogs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+             <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col max-h-[80vh]">
+                 <div className="flex justify-between items-center mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">
+                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">任务日志</h3>
+                     <button onClick={() => setShowLogs(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">✕</button>
+                 </div>
+                 
+                 {/* Failed Tasks Section */}
+                 {failedTasks.length > 0 && (
+                     <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded-lg flex justify-between items-center">
+                         <span className="text-sm text-red-700 dark:text-red-300 font-bold">{failedTasks.length} 个任务失败</span>
+                         <button 
+                             onClick={retryFailedTasks}
+                             className="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded font-bold shadow-sm"
+                         >
+                             重试所有失败任务
+                         </button>
+                     </div>
+                 )}
+                 
+                 <div className="flex-1 overflow-y-auto space-y-2 bg-gray-50 dark:bg-gray-950 p-2 rounded border border-gray-200 dark:border-gray-800">
+                     {logs.length === 0 && <div className="text-center text-gray-400 py-4 text-xs">暂无日志</div>}
+                     {logs.map((log, i) => (
+                         <div key={i} className={`p-2 rounded text-xs font-mono border ${
+                             log.type === 'error' ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400' :
+                             log.type === 'success' ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-900/50 text-green-600 dark:text-green-400' :
+                             'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                         }`}>
+                             <span className="opacity-50 mr-2">[{log.time}]</span>
+                             {log.message}
+                         </div>
+                     ))}
+                 </div>
+             </div>
+        </div>
+      )}
+
       {/* --- Import Modal --- */}
       {showImport && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -768,9 +895,29 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       {/* --- Benchmark Config Modal --- */}
       {showConfig && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
+              <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh] relative">
+                  
+                  {/* Delete Confirmation Overlay */}
+                  {slotToDelete !== null && (
+                      <div className="absolute inset-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur flex items-center justify-center rounded-xl p-4">
+                          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 max-w-sm text-center">
+                              <h4 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">确认删除此分组？</h4>
+                              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                                  删除第 {slotToDelete + 1} 组 ({draftConfig.slots[slotToDelete]?.label}) 会导致后续分组序号前移，可能会使已生成的实装图错位。
+                              </p>
+                              <div className="flex gap-3 justify-center">
+                                  <button onClick={() => setSlotToDelete(null)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">取消</button>
+                                  <button onClick={confirmDeleteSlot} className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold shadow-lg transition-colors">确认删除</button>
+                              </div>
+                          </div>
+                      </div>
+                  )}
+
                   <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">⚙️ 实装测试配置</h3>
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">⚙️ 实装测试配置</h3>
+                        <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded">编辑模式</span>
+                      </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">配置生成实装图时的参数。系统会自动添加 <code>artist:NAME</code>。</p>
                   </div>
                   
@@ -796,7 +943,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                               </button>
                           </div>
                           
-                          {config.slots.map((slot, i) => (
+                          {draftConfig.slots.map((slot, i) => (
                               <div key={i} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-900/50 relative group/slot">
                                   <div className="flex justify-between mb-2 gap-2">
                                       <div className="flex items-center gap-2 flex-1">
@@ -810,9 +957,9 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                           />
                                       </div>
                                       <button 
-                                          onClick={() => removeSlot(i)}
+                                          onClick={() => handleDeleteClick(i)} // Trigger confirm modal
                                           className="text-gray-400 hover:text-red-500 text-xs px-2"
-                                          title="删除此分组（注意：删除中间的分组会导致后续实装图错位）"
+                                          title="删除此分组"
                                       >
                                           删除
                                       </button>
@@ -831,8 +978,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                           <label className="block text-xs font-bold text-red-500 dark:text-red-400 mb-1 uppercase">通用负面 (Negative Prompt)</label>
                           <textarea 
                               className="w-full h-16 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-xs dark:text-white font-mono resize-none focus:ring-1 focus:ring-red-500 outline-none"
-                              value={config.negative}
-                              onChange={e => setConfig({...config, negative: e.target.value})}
+                              value={draftConfig.negative}
+                              onChange={e => setDraftConfig({...draftConfig, negative: e.target.value})}
                           />
                       </div>
 
@@ -843,11 +990,11 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                 <input 
                                     type="number" 
                                     className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
-                                    value={config.seed}
-                                    onChange={e => setConfig({...config, seed: parseInt(e.target.value)})}
+                                    value={draftConfig.seed}
+                                    onChange={e => setDraftConfig({...draftConfig, seed: parseInt(e.target.value)})}
                                 />
                                 <button
-                                    onClick={() => setConfig({...config, seed: Math.floor(Math.random() * 4294967295)})}
+                                    onClick={() => setDraftConfig({...draftConfig, seed: Math.floor(Math.random() * 4294967295)})}
                                     className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 flex items-center justify-center"
                                     title="随机生成一个固定 Seed"
                                 >
@@ -861,14 +1008,14 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                   <input 
                                       type="number" placeholder="Steps"
                                       className="w-1/2 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
-                                      value={config.steps}
-                                      onChange={e => setConfig({...config, steps: parseInt(e.target.value)})}
+                                      value={draftConfig.steps}
+                                      onChange={e => setDraftConfig({...draftConfig, steps: parseInt(e.target.value)})}
                                   />
                                   <input 
                                       type="number" placeholder="Scale"
                                       className="w-1/2 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
-                                      value={config.scale}
-                                      onChange={e => setConfig({...config, scale: parseFloat(e.target.value)})}
+                                      value={draftConfig.scale}
+                                      onChange={e => setDraftConfig({...draftConfig, scale: parseFloat(e.target.value)})}
                                   />
                               </div>
                           </div>

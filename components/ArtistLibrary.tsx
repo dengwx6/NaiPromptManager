@@ -487,13 +487,13 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                     >
                         ⚙️
                     </button>
-                    {/* Changed: Flexible width container for slots */}
-                    <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 overflow-x-auto max-w-[200px] md:max-w-none md:flex-wrap md:overflow-visible">
+                    {/* Changed: Flexible width container for slots with gap-1 and items-center */}
+                    <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 overflow-x-auto max-w-[200px] md:max-w-none md:flex-wrap md:overflow-visible gap-1 items-center">
                         {config.slots.map((slot, index) => (
                             <button
                                 key={index}
                                 onClick={() => setActiveSlot(index)}
-                                className={`px-3 py-1 rounded text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 mb-0 md:mb-1 last:mb-0 ${activeSlot === index ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'}`}
+                                className={`px-3 py-1 rounded text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 ${activeSlot === index ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'}`}
                                 title={slot.prompt}
                             >
                                 {index + 1}. {slot.label}

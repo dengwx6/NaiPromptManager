@@ -537,11 +537,11 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 ) : (
                     <input 
                         type="range" 
-                        min="80" max="300" step="10"
+                        min="80" max="400" step="10"
                         value={listImgWidth} 
                         onChange={(e) => setListImgWidth(parseInt(e.target.value))}
                         className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-indigo-500"
-                        title="调整实装图宽度 (80-300px)"
+                        title="调整实装图宽度 (80-400px)"
                     />
                 )}
             </div>

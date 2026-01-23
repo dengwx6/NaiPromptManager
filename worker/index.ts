@@ -254,14 +254,19 @@ export default {
         }
       } catch (e) { console.error('Admin init failed', e) }
 
-      // Create Default Guest User if not exists
+      // Create Default Guest User (Replaced UPSERT with explicitly check)
       try {
-        const guest = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first();
-        if (!guest) {
-            const guestId = 'guest-0000-0000-0000-000000000000'; // Static ID for guest
-            // Default passcode stored in 'password' field as plaintext
-            await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)')
-              .bind(guestId, 'guest', 'nai_guest_123', 'guest', Date.now()).run();
+        const guestName = 'guest';
+        // Explicitly check for user by username
+        const existing = await db.prepare('SELECT * FROM users WHERE username = ?').bind(guestName).first<{id: string, role: string}>();
+        
+        if (!existing) {
+             const guestId = 'guest-0000-0000-0000-000000000000';
+             await db.prepare("INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, 'nai_guest_123', 'guest', ?, 0)")
+               .bind(guestId, guestName, Date.now()).run();
+        } else if (existing.role !== 'guest') {
+             // If user 'guest' exists but role is wrong (e.g. legacy data), fix it
+             await db.prepare("UPDATE users SET role = 'guest' WHERE username = ?").bind(guestName).run();
         }
       } catch (e) { console.error('Guest init failed', e) }
     };
@@ -307,12 +312,15 @@ export default {
           const { passcode } = await request.json() as any;
           if (!passcode) return error('请输入访问口令', 400);
           
-          // Ensure guest user exists (lazy check)
-          try { await db.prepare('SELECT 1 FROM users WHERE role = ?').bind('guest').first(); } catch(e) { await initDB(); }
+          // Lazy init: Try to find guest user, if not found, run initDB then try again
+          let guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>();
           
-          const guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>();
-          
-          if (!guestUser) return error('Guest user configuration error', 500);
+          if (!guestUser) {
+              await initDB();
+              guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>();
+          }
+
+          if (!guestUser) return error('System Error: Guest user configuration failed. Please contact admin.', 500);
 
           // Plaintext check for guest passcode
           if (passcode !== guestUser.password) {
@@ -333,6 +341,8 @@ export default {
       // Login (UPDATED: Hash Support & Lazy Migration)
       if (path === '/api/auth/login' && method === 'POST') {
           const { username, password } = await request.json() as any;
+          
+          // Lazy Init Check for table existence
           try { await db.prepare('SELECT 1 FROM users').first(); } catch(e) { await initDB(); }
 
           const user = await db.prepare('SELECT * FROM users WHERE username = ?')
@@ -400,7 +410,14 @@ export default {
       // --- Admin: Guest Settings ---
       if (path === '/api/admin/guest-setting' && method === 'GET') {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
-          const guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>();
+          
+          // Lazy init to ensure guest user exists if Admin checks settings first
+          let guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>();
+          if (!guest) {
+             await initDB();
+             guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>();
+          }
+
           if (!guest) return error('Guest user not found', 404);
           return json({ passcode: guest.password });
       }
@@ -409,6 +426,11 @@ export default {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
           const { passcode } = await request.json() as any;
           if (!passcode) return error('Missing passcode', 400);
+          
+          // Ensure guest exists before update
+          let guest = await db.prepare('SELECT 1 FROM users WHERE role = ?').bind('guest').first();
+          if (!guest) await initDB();
+
           await db.prepare('UPDATE users SET password = ? WHERE role = ?').bind(passcode, 'guest').run();
           return json({ success: true });
       }

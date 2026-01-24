@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-// Re-define locally or import if exported (assuming inline types from original file are sufficient or need duplication if not shared)
+// Re-define locally to ensure portability
 interface BenchmarkSlot {
     label: string;
     prompt: string;

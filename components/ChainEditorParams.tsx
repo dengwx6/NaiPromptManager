@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { NAIParams, CharacterParams } from '../types';
+import { NAIParams } from '../types';
 
 interface ChainEditorParamsProps {
     params: NAIParams;

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Artist } from '../types';
 import { generateImage } from '../services/naiService'; // Import generation service
 import { api } from '../services/api'; // Import api for updating
@@ -28,6 +28,33 @@ const getGroupChar = (name: string) => {
 };
 
 const ALPHABET = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+// Helper: Compress Base64 Image to JPEG
+const compressImage = (base64: string, quality: number = 0.8): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                resolve(base64); // Fallback
+                return;
+            }
+            // Fill white background for transparency safety
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            
+            // Convert to JPEG with quality
+            const compressed = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressed);
+        };
+        img.onerror = (e) => reject(e);
+        img.src = base64;
+    });
+};
 
 // Lazy Loading Component
 const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
@@ -121,7 +148,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [showFavOnly, setShowFavOnly] = useState(false);
   const [usePrefix, setUsePrefix] = useState(true);
-  const [lightboxImg, setLightboxImg] = useState<{src: string, name: string} | null>(null);
+  const [lightboxState, setLightboxState] = useState<{ artistIdx: number, slotIdx: number } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -406,10 +433,14 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
               const negative = config.negative;
               const seed = config.seed === -1 ? 0 : config.seed;
 
+              // Generate
               const base64Img = await generateImage(apiKey, prompt, negative, {
                   width: 832, height: 1216, steps: config.steps, scale: config.scale, sampler: 'k_euler_ancestral', seed: seed,
                   qualityToggle: true, ucPreset: 0
               });
+
+              // Compress before upload (Save Space!)
+              const compressedImg = await compressImage(base64Img, 0.8);
 
               // Construct update payload
               // Fetch FRESH benchmarks from current state to avoid overwrites if multiple tasks ran
@@ -417,7 +448,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
               
               // Pad array if needed
               while(currentBenchmarks.length <= task.slot) currentBenchmarks.push("");
-              currentBenchmarks[task.slot] = base64Img;
+              currentBenchmarks[task.slot] = compressedImg;
 
               await api.post('/artists', {
                   id: artist.id,
@@ -429,7 +460,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
               // Refresh UI
               await onRefresh();
-              addLog(`Generated: ${artist.name} (Slot ${task.slot + 1})`, 'success');
+              addLog(`Generated & Compressed: ${artist.name} (Slot ${task.slot + 1})`, 'success');
 
           } catch (err: any) {
               const errMsg = err.message || JSON.stringify(err);
@@ -487,6 +518,74 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       notify(`已重新加入 ${failedTasks.length} 个失败任务`);
   };
 
+  // --- Lightbox Navigation Logic ---
+  const navigateLightbox = useCallback((direction: 'next' | 'prev') => {
+      setLightboxState(current => {
+          if (!current) return null;
+          let { artistIdx, slotIdx } = current;
+          const totalArtists = filteredArtists.length;
+          const totalSlots = config.slots.length;
+
+          if (layoutMode === 'grid') {
+              // Grid Mode: Iterate Artists, Keep Slot Context
+              // If we are in 'original' view, keep slotIdx as -1.
+              // If we are in 'benchmark' view, keep slotIdx as current (usually activeSlot, which is handled by setLightboxState logic)
+              if (direction === 'next') {
+                  artistIdx = (artistIdx + 1) % totalArtists;
+              } else {
+                  artistIdx = (artistIdx - 1 + totalArtists) % totalArtists;
+              }
+          } else {
+              // List Mode: Iterate Slots then Artists
+              if (direction === 'next') {
+                  if (slotIdx < totalSlots - 1) {
+                      slotIdx++;
+                  } else {
+                      artistIdx = (artistIdx + 1) % totalArtists;
+                      slotIdx = -1; // Reset to Original of next artist
+                  }
+              } else {
+                  if (slotIdx > -1) {
+                      slotIdx--;
+                  } else {
+                      artistIdx = (artistIdx - 1 + totalArtists) % totalArtists;
+                      slotIdx = totalSlots - 1; // Go to last slot of prev artist
+                  }
+              }
+          }
+          return { artistIdx, slotIdx };
+      });
+  }, [filteredArtists.length, config.slots.length, layoutMode]);
+
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if (!lightboxState) return;
+          if (e.key === 'ArrowRight') navigateLightbox('next');
+          if (e.key === 'ArrowLeft') navigateLightbox('prev');
+          if (e.key === 'Escape') setLightboxState(null);
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxState, navigateLightbox]);
+
+  // Helper to get current lightbox image details
+  const currentLightboxImage = useMemo(() => {
+      if (!lightboxState) return null;
+      const artist = filteredArtists[lightboxState.artistIdx];
+      if (!artist) return null;
+      
+      const { slotIdx } = lightboxState;
+      if (slotIdx === -1) {
+          return { src: artist.imageUrl, name: artist.name };
+      }
+      // Fallback logic for slot 0 to use legacy previewUrl if benchmark array is empty
+      const src = artist.benchmarks?.[slotIdx] || (slotIdx === 0 ? artist.previewUrl : null);
+      const slotName = config.slots[slotIdx]?.label || `Slot ${slotIdx + 1}`;
+      
+      return { src, name: `${artist.name} - ${slotName}` };
+  }, [lightboxState, filteredArtists, config.slots]);
+
+
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden relative">
       
@@ -509,7 +608,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                     className={`p-1.5 rounded transition-all ${layoutMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
                     title="网格视图"
                 >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
                 </button>
                 <button
                     onClick={() => setLayoutMode('list')}
@@ -761,7 +860,15 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                      <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="hidden md:block p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-blue-500 dark:text-blue-300 hover:text-blue-600 pointer-events-auto">
                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                      </a>
-                                     <button onClick={(e) => {e.stopPropagation(); setLightboxImg({src: displayImg, name: artist.name})}} className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-gray-700 dark:text-white pointer-events-auto">
+                                     <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation(); 
+                                            // Determine slot based on current viewMode for Grid
+                                            const slot = viewMode === 'benchmark' ? activeSlot : -1;
+                                            setLightboxState({ artistIdx: idx, slotIdx: slot });
+                                        }} 
+                                        className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-gray-700 dark:text-white pointer-events-auto"
+                                     >
                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
                                      </button>
 
@@ -852,7 +959,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                     className="flex flex-col gap-1 flex-shrink-0 group relative transition-all"
                                     style={{ width: `${listImgWidth}px` }}
                                  >
-                                     <div className="aspect-[2/3] rounded-lg overflow-hidden relative cursor-zoom-in" onClick={() => setLightboxImg({src: artist.imageUrl, name: artist.name})}>
+                                     <div className="aspect-[2/3] rounded-lg overflow-hidden relative cursor-zoom-in" onClick={() => setLightboxState({ artistIdx: idx, slotIdx: -1 })}>
                                          <LazyImage src={artist.imageUrl} alt="原图" />
                                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                      </div>
@@ -877,7 +984,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                          >
                                              <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden relative border border-gray-200 dark:border-gray-700">
                                                  {displayImg ? (
-                                                     <div className="w-full h-full cursor-zoom-in" onClick={() => setLightboxImg({src: displayImg, name: `${artist.name} - ${slot.label}`})}>
+                                                     <div className="w-full h-full cursor-zoom-in" onClick={() => setLightboxState({ artistIdx: idx, slotIdx: i })}>
                                                          <LazyImage src={displayImg} alt={slot.label} />
                                                      </div>
                                                  ) : (
@@ -935,9 +1042,49 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       />
 
       {/* --- Lightbox --- */}
-      {lightboxImg && (
-          <div className="fixed inset-0 z-50 bg-white/90 dark:bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setLightboxImg(null)}>
-              <img src={lightboxImg.src} alt={lightboxImg.name} className="max-w-full max-h-[90vh] rounded shadow-2xl" onClick={e => e.stopPropagation()} />
+      {currentLightboxImage && (
+          <div className="fixed inset-0 z-50 bg-white/95 dark:bg-black/95 flex items-center justify-center backdrop-blur-sm select-none" onClick={() => setLightboxState(null)}>
+              {/* Prev Zone */}
+              <div 
+                className="absolute left-0 top-0 bottom-0 w-[20%] z-20 flex items-center justify-start pl-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                onClick={(e) => { e.stopPropagation(); navigateLightbox('prev'); }}
+              >
+                  <div className="p-2 rounded-full bg-white/10 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-8 h-8 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  </div>
+              </div>
+
+              {/* Image Container */}
+              <div className="relative max-w-full max-h-full p-4 flex flex-col items-center pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                  <img 
+                    src={currentLightboxImage.src} 
+                    alt={currentLightboxImage.name} 
+                    className="max-w-full max-h-[85vh] rounded shadow-2xl object-contain cursor-pointer" 
+                    onClick={() => setLightboxState(null)} 
+                  />
+                  <div className="mt-4 text-center">
+                      <h3 className="text-lg font-bold text-gray-800 dark:text-white drop-shadow-md">{currentLightboxImage.name}</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">点击图片或背景关闭 | 左右点击翻页 | 键盘 ← → 切换</p>
+                  </div>
+              </div>
+
+              {/* Next Zone */}
+              <div 
+                className="absolute right-0 top-0 bottom-0 w-[20%] z-20 flex items-center justify-end pr-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                onClick={(e) => { e.stopPropagation(); navigateLightbox('next'); }}
+              >
+                  <div className="p-2 rounded-full bg-white/10 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-8 h-8 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </div>
+              </div>
+
+              {/* Close Button (Top Right) */}
+              <button 
+                className="absolute top-4 right-4 z-30 p-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white bg-white/10 rounded-full backdrop-blur"
+                onClick={() => setLightboxState(null)}
+              >
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
           </div>
       )}
 

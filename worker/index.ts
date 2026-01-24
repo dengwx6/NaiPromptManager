@@ -130,6 +130,21 @@ function parseCookies(request: Request) {
   return cookies;
 }
 
+// Helper: Delete File from R2
+async function deleteR2File(env: Env, url: string) {
+    if (!env.BUCKET || !url) return;
+    // Check if it is a local API asset URL
+    if (url.startsWith('/api/assets/')) {
+        const key = url.replace('/api/assets/', '');
+        try {
+            await env.BUCKET.delete(decodeURIComponent(key));
+            console.log(`Deleted old file: ${key}`);
+        } catch (e) {
+            console.error(`Failed to delete file ${key}`, e);
+        }
+    }
+}
+
 // Helper: Process Base64 Image and Upload to R2 with Quota Check
 async function processImageUpload(
     env: Env, 
@@ -281,9 +296,8 @@ export default {
           return json({ config: res ? JSON.parse(res.value) : null });
       }
 
-      // Guest Login & Normal Login Logic (Abbreviated for brevity, logic unchanged from previous)
+      // Guest Login & Normal Login Logic
       if (path === '/api/auth/guest-login' && method === 'POST') {
-          // ... (Guest login logic as before) ...
           const { passcode } = await request.json() as any;
           if (!passcode) return error('请输入访问口令', 400);
           let guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>();
@@ -297,7 +311,6 @@ export default {
       }
 
       if (path === '/api/auth/login' && method === 'POST') {
-          // ... (Login logic as before) ...
           const { username, password } = await request.json() as any;
           try { await db.prepare('SELECT 1 FROM users').first(); } catch(e) { await initDB(); }
           const user = await db.prepare('SELECT * FROM users WHERE username = ?').bind(username).first<{id: string, role: string, storage_usage: number, password: string}>();
@@ -344,31 +357,24 @@ export default {
           const { name, url: githubUrl } = await request.json() as any;
           if (!name || !githubUrl) return error('Missing name or url', 400);
 
-          // 1. Fetch image from GitHub
           const ghRes = await fetch(githubUrl);
           if (!ghRes.ok) return error(`Failed to fetch from GitHub: ${ghRes.statusText}`, 502);
 
-          // 2. Stream to R2
           const contentType = ghRes.headers.get('content-type') || 'image/png';
           const ext = contentType.split('/')[1] || 'png';
-          const id = crypto.randomUUID(); // New Artist ID
+          const id = crypto.randomUUID(); 
           const filename = `artists/${id}_gh.${ext}`;
 
           await env.BUCKET.put(filename, ghRes.body, {
               httpMetadata: { contentType }
           });
 
-          // 3. Insert into DB (Upsert by Name to avoid dupes)
           const r2Url = `/api/assets/${filename}`;
-          
-          // Check if artist exists by name
           const existing = await db.prepare('SELECT id FROM artists WHERE name = ?').bind(name).first<{id: string}>();
           
           if (existing) {
-              // Update image only
               await db.prepare('UPDATE artists SET image_url = ? WHERE id = ?').bind(r2Url, existing.id).run();
           } else {
-              // Insert new
               await db.prepare('INSERT INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(id, name, r2Url).run();
           }
 
@@ -420,8 +426,7 @@ export default {
           return json({ url: `/api/assets/${filename}`, size: fileSize });
       }
 
-      // --- CRUD Routes (Chains, Artists, Inspirations) - Keeping existing logic ---
-      // (Abbreviated, but functionally same as previous version)
+      // --- CRUD Routes ---
       if (path === '/api/users' && method === 'POST') {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
           const { username, password } = await request.json() as any;
@@ -474,9 +479,16 @@ export default {
         if (!chain) return error('Not Found', 404);
         if (chain.user_id && chain.user_id !== currentUser.id && currentUser.role !== 'admin') return error('Permission Denied', 403);
         
-        // Handle Base64 Preview Image Upload (Existing Logic)
+        // Handle Chain Cover Cleanup
         if (updates.previewImage && updates.previewImage.startsWith('data:')) {
-             try { updates.previewImage = await processImageUpload(env, updates.previewImage, 'covers', id, currentUser); } catch (e: any) { return error(e.message, 413); }
+             try { 
+                 const newUrl = await processImageUpload(env, updates.previewImage, 'covers', id, currentUser);
+                 // Delete old cover if exists and different
+                 if (chain.preview_image && chain.preview_image !== newUrl) {
+                     await deleteR2File(env, chain.preview_image);
+                 }
+                 updates.previewImage = newUrl;
+             } catch (e: any) { return error(e.message, 413); }
         }
 
         const fields = []; const values = [];
@@ -494,15 +506,17 @@ export default {
       if (chainIdMatch && method === 'DELETE') {
         if (currentUser.role === 'guest') return error('Forbidden', 403);
         const id = chainIdMatch[1];
-        const chain = await db.prepare('SELECT user_id FROM chains WHERE id = ?').bind(id).first<{user_id: string}>();
+        const chain = await db.prepare('SELECT user_id, preview_image FROM chains WHERE id = ?').bind(id).first<{user_id: string, preview_image: string}>();
         if (chain) {
             if (chain.user_id && chain.user_id !== currentUser.id && currentUser.role !== 'admin') return error('Permission Denied', 403);
+            // Delete Cover
+            if (chain.preview_image) await deleteR2File(env, chain.preview_image);
             await db.prepare('DELETE FROM chains WHERE id = ?').bind(id).run();
         }
         return json({ success: true });
       }
 
-      // Artists
+      // Artists (Updated with Deletion Logic)
       if (path === '/api/artists' && method === 'GET') {
          const res = await db.prepare('SELECT * FROM artists ORDER BY name ASC').all();
          return json(res.results.map((a: any) => ({ id: a.id, name: a.name, imageUrl: a.image_url, previewUrl: a.preview_url, benchmarks: a.benchmarks ? JSON.parse(a.benchmarks) : [] })));
@@ -511,20 +525,55 @@ export default {
         if (currentUser.role !== 'admin') return error('Forbidden', 403);
         const body = await request.json() as any;
         const id = body.id || crypto.randomUUID();
+        
+        // Fetch existing artist to compare for deletions
+        const existing = await db.prepare('SELECT benchmarks, preview_url, image_url FROM artists WHERE id = ?').bind(id).first<{benchmarks: string, preview_url: string, image_url: string}>();
+        const oldBenchmarks = existing && existing.benchmarks ? JSON.parse(existing.benchmarks) : [];
+
         let imageUrl = body.imageUrl;
-        if (imageUrl && imageUrl.startsWith('data:')) imageUrl = await processImageUpload(env, imageUrl, 'artists', id);
+        if (imageUrl && imageUrl.startsWith('data:')) {
+            imageUrl = await processImageUpload(env, imageUrl, 'artists', id);
+            // Delete old avatar if changed
+            if (existing && existing.image_url && existing.image_url !== imageUrl) {
+                await deleteR2File(env, existing.image_url);
+            }
+        }
+
         let benchmarks = body.benchmarks || [];
         if (Array.isArray(benchmarks)) {
             for (let i = 0; i < benchmarks.length; i++) {
-                if (benchmarks[i] && benchmarks[i].startsWith('data:')) benchmarks[i] = await processImageUpload(env, benchmarks[i], `artists/benchmarks_${i}`, id);
+                if (benchmarks[i] && benchmarks[i].startsWith('data:')) {
+                    // Upload new file
+                    const newUrl = await processImageUpload(env, benchmarks[i], `artists/benchmarks_${i}`, id);
+                    benchmarks[i] = newUrl;
+                    
+                    // Check and delete old file at this index
+                    const oldUrl = oldBenchmarks[i];
+                    if (oldUrl && oldUrl !== newUrl) {
+                        await deleteR2File(env, oldUrl);
+                    }
+                }
             }
         }
+        
         await db.prepare(`INSERT INTO artists (id, name, image_url, benchmarks, preview_url) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, image_url = excluded.image_url, benchmarks = excluded.benchmarks`).bind(id, body.name, imageUrl, JSON.stringify(benchmarks), body.previewUrl).run();
         return json({ success: true, benchmarks });
       }
       if (path.startsWith('/api/artists/') && method === 'DELETE') {
         if (currentUser.role !== 'admin') return error('Forbidden', 403);
         const id = path.split('/').pop();
+        const artist = await db.prepare('SELECT benchmarks, preview_url, image_url FROM artists WHERE id = ?').bind(id).first<{benchmarks: string, preview_url: string, image_url: string}>();
+        if (artist) {
+            // Delete all associated files
+            await deleteR2File(env, artist.image_url);
+            if (artist.preview_url) await deleteR2File(env, artist.preview_url);
+            if (artist.benchmarks) {
+                const bms = JSON.parse(artist.benchmarks);
+                for (const url of bms) {
+                    if (url) await deleteR2File(env, url);
+                }
+            }
+        }
         await db.prepare('DELETE FROM artists WHERE id = ?').bind(id).run();
         return json({ success: true });
       }
@@ -545,8 +594,14 @@ export default {
       if (path === '/api/inspirations/bulk-delete' && method === 'POST') {
           if (currentUser.role === 'guest') return error('Forbidden', 403);
           const { ids } = await request.json() as { ids: string[] };
-          if (currentUser.role === 'admin') { for (const id of ids) await db.prepare('DELETE FROM inspirations WHERE id = ?').bind(id).run(); } 
-          else { for (const id of ids) await db.prepare('DELETE FROM inspirations WHERE id = ? AND user_id = ?').bind(id, currentUser.id).run(); }
+          for (const id of ids) {
+              const item = await db.prepare('SELECT user_id, image_url FROM inspirations WHERE id = ?').bind(id).first<{user_id: string, image_url: string}>();
+              if (item) {
+                  if (currentUser.role !== 'admin' && item.user_id !== currentUser.id) continue;
+                  await deleteR2File(env, item.image_url);
+                  await db.prepare('DELETE FROM inspirations WHERE id = ?').bind(id).run();
+              }
+          }
           return json({ success: true });
       }
       if (path.startsWith('/api/inspirations/') && method === 'PUT') {
@@ -563,9 +618,10 @@ export default {
       if (path.startsWith('/api/inspirations/') && method === 'DELETE') {
          if (currentUser.role === 'guest') return error('Forbidden', 403);
          const id = path.split('/').pop();
-         const item = await db.prepare('SELECT user_id FROM inspirations WHERE id = ?').bind(id).first<{user_id: string}>();
+         const item = await db.prepare('SELECT user_id, image_url FROM inspirations WHERE id = ?').bind(id).first<{user_id: string, image_url: string}>();
          if (item) {
              if (item.user_id !== currentUser.id && currentUser.role !== 'admin') return error('Permission Denied', 403);
+             await deleteR2File(env, item.image_url);
              await db.prepare('DELETE FROM inspirations WHERE id = ?').bind(id).run();
          }
          return json({ success: true });

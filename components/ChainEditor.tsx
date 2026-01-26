@@ -39,7 +39,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
   const [basePrompt, setBasePrompt] = useState(chain.basePrompt || '');
   const [negativePrompt, setNegativePrompt] = useState(chain.negativePrompt || '');
   const [modules, setModules] = useState<PromptModule[]>(chain.modules || []);
-  const [params, setParams] = useState(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: 0, qualityToggle: true, ucPreset: 0 });
+  // Default Seed to undefined (random), UC Preset to 4 (None)
+  const [params, setParams] = useState(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4 });
   
   // --- New: Subject/Variable Prompt State ---
   const [subjectPrompt, setSubjectPrompt] = useState('');
@@ -86,8 +87,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         position: m.position || 'post'
     })));
     setParams({
-        width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: 0, 
-        qualityToggle: true, ucPreset: 0, characters: [],
+        width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, 
+        qualityToggle: true, ucPreset: 4, characters: [],
         useCoords: chain.params?.useCoords ?? true, // Default to Manual for backward compatibility
         variety: chain.params?.variety ?? false,
         cfgRescale: chain.params?.cfgRescale ?? 0,
@@ -633,7 +634,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                   <section>
                     <div className="flex justify-between items-end mb-2">
                         <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
-                            {isCharacterMode ? "1. 角色核心特征 (Base)" : "1. 基础场景/背景 (Base)"}
+                            {isCharacterMode ? "1. 基础画风 (Base)" : "1. 基础画风 (Base)"}
                         </label>
                         {/* Import & Load Preset Buttons */}
                         {canEdit && (
@@ -676,7 +677,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                   <section>
                     <div className="flex justify-between items-center mb-3">
                         <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
-                            {isCharacterMode ? "2. 服装/变体 (Modules)" : "2. 风格模块 (Modules)"}
+                            {isCharacterMode ? "2. 模块 (Modules)" : "2. 模块 (Modules)"}
                         </label>
                         {canEdit && (
                             <button onClick={addModule} className="text-xs flex items-center bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-700">

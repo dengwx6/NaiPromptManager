@@ -119,7 +119,7 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
   // 解析 Zip (逻辑保持不变)
   const zip = await JSZip.loadAsync(blob);
   const filename = Object.keys(zip.files)[0];
-  if (!filename) throw new Error("No image found in response ");
+  if (!filename) throw new Error("No image found in response");
   
   const fileData = await zip.files[filename].async('base64');
   return `data:image/png;base64,${fileData}`;

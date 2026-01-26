@@ -43,7 +43,7 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
                     <p className="text-[10px] text-gray-400 mb-2">此处内容将作为整体描述插入，或作为 Base Caption 的补充。</p>
                     <textarea
                         className="w-full h-24 md:h-32 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm outline-none focus:border-indigo-500 font-mono resize-none"
-                        placeholder="例如：1girl, solo, white dress, sitting..."
+                        placeholder="输入动态主体描述，例如：blue hair, sitting..."
                         value={subjectPrompt}
                         onChange={(e) => setSubjectPrompt(e.target.value)}
                     />

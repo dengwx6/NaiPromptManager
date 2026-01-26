@@ -76,6 +76,25 @@ class DBService {
         payload.previewImage = copyFrom.previewImage;
         // Don't copy type if it's explicitly passed, otherwise assume same type
         if (!type && copyFrom.type) payload.type = copyFrom.type;
+        
+        // Copy variable values as well to preserve the subject
+        payload.variableValues = copyFrom.variableValues;
+    } else {
+        // Create Default Modules for new chain
+        // Default "Lighting" module, disabled by default per user request
+        payload.modules = [
+             { 
+                 id: crypto.randomUUID(), 
+                 name: '光影', 
+                 content: 'cinematic lighting, dynamic lighting, ', 
+                 isActive: false, 
+                 position: 'post' 
+             }
+        ];
+        
+        // Default Subject for NEW chains is '1girl'.
+        // User can clear this in editor (it will save as "" string), avoiding forced reset.
+        payload.variableValues = { subject: '1girl' };
     }
     const res = await api.post('/chains', payload);
     return res.id;

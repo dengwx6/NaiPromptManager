@@ -769,7 +769,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             {/* Settings Group */}
             <div className="flex gap-2 items-center ml-auto">
                 {/* Auto-Fill Button */}
-                {viewMode === 'benchmark' && apiKey && (
+                {(layoutMode === 'list' || viewMode === 'benchmark') && apiKey && (
                      <button 
                         onClick={queueMissingGenerations} 
                         title={`一键补全当前列表中缺失 "Slot ${activeSlot + 1}: ${config.slots[activeSlot]?.label}" 的画师`}

@@ -17,6 +17,7 @@ export interface PromptModule {
   content: string;
   isActive: boolean; // For testing toggle
   position?: 'pre' | 'post'; // New: Order control
+  group?: string; // New: Group for mutual exclusion (N choose 1)
 }
 
 export interface CharacterParams {
@@ -38,7 +39,7 @@ export interface NAIParams {
   qualityToggle?: boolean; // Default true
   ucPreset?: number; // 0: Heavy, 1: Light, 2: Furry, 3: Human, 4: None
   characters?: CharacterParams[]; // Multi-character support
-  
+
   // New Features
   useCoords?: boolean; // true = Manual Coords, false = AI's Choice
   variety?: boolean; // Variety+ (controlled via skip_cfg_above_sigma)
@@ -57,13 +58,13 @@ export interface PromptChain {
   description: string;
   tags: string[];
   previewImage?: string; // Base64 or URL
-  
+
   // Prompt Data (Formerly in Version)
   basePrompt: string;
   negativePrompt: string;
   modules: PromptModule[];
   params: NAIParams;
-  
+
   // New: Persist variable inputs (Now used for the single Subject/Variable prompt)
   variableValues?: Record<string, string>;
 
@@ -93,11 +94,11 @@ export interface Inspiration {
 
 // Local Generation History Item
 export interface LocalGenItem {
-    id: string;
-    imageUrl: string; // Base64
-    prompt: string;
-    params: NAIParams;
-    createdAt: number;
+  id: string;
+  imageUrl: string; // Base64
+  prompt: string;
+  params: NAIParams;
+  createdAt: number;
 }
 
 // Global Env Type for Cloudflare/Runtime injection

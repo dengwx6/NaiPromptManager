@@ -63,6 +63,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         importSettings: true,    // Resolution, Steps, Scale, Sampler...
         importSeed: true,        // Seed
     });
+    const [selectedImportModuleIds, setSelectedImportModuleIds] = useState<Set<string>>(new Set());
 
     // --- Favorites (for preset sort), re-read when opening modal ---
     const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -250,6 +251,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             importSettings: !isTargetChar,       // Artist: Checked, Char: Unchecked
             importSeed: false,                   // Both: Unchecked
         });
+
+        // Select all modules by default
+        setSelectedImportModuleIds(new Set((c.modules || []).map(m => m.id)));
     };
 
     const confirmImport = () => {
@@ -272,7 +276,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
 
         // 3. Modules
         if (importOptions.importModules && target.modules && target.modules.length > 0) {
-            const newModules = target.modules.map(m => ({ ...m, id: crypto.randomUUID() }));
+            const modulesToImport = target.modules.filter(m => selectedImportModuleIds.has(m.id));
+            const newModules = modulesToImport.map(m => ({ ...m, id: crypto.randomUUID() }));
 
             if (importOptions.appendModules) {
                 setModules(prev => [...prev, ...newModules]); // Append
@@ -531,6 +536,19 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const toggleModuleActive = (id: string) => {
         setActiveModules(prev => {
             const newState = { ...prev, [id]: !prev[id] };
+
+            // Group Logic: If activating, deactivate others in same group
+            if (newState[id]) {
+                const targetMod = modules.find(m => m.id === id);
+                if (targetMod && targetMod.group) {
+                    modules.forEach(m => {
+                        if (m.id !== id && m.group === targetMod.group && prev[m.id]) {
+                            newState[m.id] = false;
+                        }
+                    });
+                }
+            }
+
             markChange();
             return newState;
         });
@@ -545,9 +563,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setErrorMsg(null);
         try {
             const activeParams = { ...params };
-            const img = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams);
-            setGeneratedImage(img);
-            await localHistory.add(img, finalPrompt, activeParams);
+            const result = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams);
+            setGeneratedImage(result.image);
+            // Use actual seed returned from generation
+            const finalParams = { ...activeParams, seed: result.seed };
+            await localHistory.add(result.image, finalPrompt, finalParams);
         } catch (e: any) {
             setErrorMsg(e.message);
             notify(e.message, 'error');
@@ -785,6 +805,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                                     后置
                                                 </button>
                                             </div>
+                                            <input
+                                                type="text"
+                                                placeholder="分组 (Group)"
+                                                disabled={!canEdit}
+                                                className="bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 text-gray-500 dark:text-gray-400 text-xs outline-none px-1 w-20 text-center"
+                                                value={mod.group || ''}
+                                                onChange={(e) => handleModuleChange(idx, 'group', e.target.value)}
+                                            />
                                             {canEdit && (
                                                 <button onClick={() => removeModule(idx)} className="text-gray-400 hover:text-red-500 flex-shrink-0">
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1047,6 +1075,27 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                         <input type="checkbox" checked={importOptions.appendModules} onChange={e => setImportOptions({ ...importOptions, appendModules: e.target.checked })} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600" />
                                         <span className="text-xs text-gray-500 dark:text-gray-400">追加 (Append)</span>
                                     </label>
+                                )}
+                                {importOptions.importModules && importCandidate.modules && importCandidate.modules.length > 0 && (
+                                    <div className="ml-8 mt-2 border border-gray-200 dark:border-gray-700 rounded p-2 max-h-40 overflow-y-auto bg-gray-50 dark:bg-gray-900 custom-scrollbar">
+                                        {importCandidate.modules.map(m => (
+                                            <label key={m.id} className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800 p-1 rounded cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedImportModuleIds.has(m.id)}
+                                                    onChange={e => {
+                                                        const next = new Set(selectedImportModuleIds);
+                                                        if (e.target.checked) next.add(m.id);
+                                                        else next.delete(m.id);
+                                                        setSelectedImportModuleIds(next);
+                                                    }}
+                                                    className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-0 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                                />
+                                                <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1" title={m.content}>{m.name || '未命名模块'}</span>
+                                                {m.group && <span className="text-[9px] bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-gray-500 uppercase">{m.group}</span>}
+                                            </label>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
 

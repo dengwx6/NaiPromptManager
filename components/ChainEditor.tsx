@@ -64,6 +64,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         importSeed: true,        // Seed
     });
     const [selectedImportModuleIds, setSelectedImportModuleIds] = useState<Set<string>>(new Set());
+    // New: Tab state for import modal
+    const [importTab, setImportTab] = useState<'style' | 'character'>('style');
 
     // --- Favorites (for preset sort), re-read when opening modal ---
     const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -73,7 +75,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             const saved = localStorage.getItem('nai_chain_favs');
             if (saved) setFavorites(new Set(JSON.parse(saved) as string[]));
         } catch { /* ignore */ }
-    }, [showImportPreset]);
+        // Default tab: if I am Character, I likely want to import Artist (style). If I am Artist (style), I likely want Character.
+        setImportTab(chain.type === 'character' ? 'style' : 'character');
+    }, [showImportPreset, chain.type]);
 
     // Sync dirty state with parent (ONLY IF NOT GUEST)
     useEffect(() => {
@@ -790,35 +794,39 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                                 value={mod.name}
                                                 onChange={(e) => handleModuleChange(idx, 'name', e.target.value)}
                                             />
-                                            <div className="flex bg-gray-200 dark:bg-gray-700 rounded p-0.5 ml-auto flex-shrink-0">
-                                                <button
-                                                    onClick={() => handleModuleChange(idx, 'position', 'pre')}
+                                            {/* Mobile optimized: Group Input and Position Toggles together on right */}
+                                            <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
+                                                <input
+                                                    type="text"
+                                                    placeholder="分组"
                                                     disabled={!canEdit}
-                                                    className={`px-2 py-0.5 text-[10px] rounded transition-colors ${mod.position === 'pre' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
-                                                >
-                                                    前置
-                                                </button>
-                                                <button
-                                                    onClick={() => handleModuleChange(idx, 'position', 'post')}
-                                                    disabled={!canEdit}
-                                                    className={`px-2 py-0.5 text-[10px] rounded transition-colors ${(mod.position === 'post' || !mod.position) ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
-                                                >
-                                                    后置
-                                                </button>
+                                                    className="bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 text-gray-500 dark:text-gray-400 text-xs outline-none px-1 w-12 text-center"
+                                                    value={mod.group || ''}
+                                                    onChange={(e) => handleModuleChange(idx, 'group', e.target.value)}
+                                                    title="分组 (Group)"
+                                                />
+                                                <div className="flex bg-gray-200 dark:bg-gray-700 rounded p-0.5">
+                                                    <button
+                                                        onClick={() => handleModuleChange(idx, 'position', 'pre')}
+                                                        disabled={!canEdit}
+                                                        className={`px-2 py-0.5 text-[10px] rounded transition-colors ${mod.position === 'pre' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
+                                                    >
+                                                        前
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleModuleChange(idx, 'position', 'post')}
+                                                        disabled={!canEdit}
+                                                        className={`px-2 py-0.5 text-[10px] rounded transition-colors ${(mod.position === 'post' || !mod.position) ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
+                                                    >
+                                                        后
+                                                    </button>
+                                                </div>
+                                                {canEdit && (
+                                                    <button onClick={() => removeModule(idx)} className="text-gray-400 hover:text-red-500 ml-1">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                    </button>
+                                                )}
                                             </div>
-                                            <input
-                                                type="text"
-                                                placeholder="分组 (Group)"
-                                                disabled={!canEdit}
-                                                className="bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 text-gray-500 dark:text-gray-400 text-xs outline-none px-1 w-20 text-center"
-                                                value={mod.group || ''}
-                                                onChange={(e) => handleModuleChange(idx, 'group', e.target.value)}
-                                            />
-                                            {canEdit && (
-                                                <button onClick={() => removeModule(idx)} className="text-gray-400 hover:text-red-500 flex-shrink-0">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                                </button>
-                                            )}
                                         </div>
                                         <textarea
                                             disabled={!canEdit}
@@ -990,38 +998,53 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             )}
 
             {/* Import Preset List Modal */}
-            {showImportPreset && !importCandidate && (() => {
-                const filtered = allChains.filter(c => (isCharacterMode ? (c.type === 'style' || !c.type) : c.type === 'character'));
-                const sorted = [...filtered].sort((a, b) => {
-                    const aFav = favorites.has(a.id); const bFav = favorites.has(b.id);
-                    if (aFav && !bFav) return -1; if (!aFav && bFav) return 1; return 0;
-                });
-                return (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                        <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-4xl md:max-w-5xl lg:max-w-6xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
-                            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
-                                <h3 className="font-bold dark:text-white">
-                                    引用{isCharacterMode ? '画师串' : '角色串'}预设
-                                </h3>
-                                <button onClick={() => setShowImportPreset(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">✕</button>
+            {showImportPreset && !importCandidate && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-4xl md:max-w-5xl lg:max-w-6xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0 gap-4">
+                            <h3 className="font-bold dark:text-white flex-shrink-0">引用预设</h3>
+
+                            {/* Tabs */}
+                            <div className="flex bg-gray-100 dark:bg-gray-700/50 p-1 rounded-lg flex-1 max-w-xs">
+                                <button
+                                    onClick={() => setImportTab('style')}
+                                    className={`flex-1 py-1 text-xs font-medium rounded-md transition-all ${importTab === 'style' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-500'}`}
+                                >
+                                    画师/风格串
+                                </button>
+                                <button
+                                    onClick={() => setImportTab('character')}
+                                    className={`flex-1 py-1 text-xs font-medium rounded-md transition-all ${importTab === 'character' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-500'}`}
+                                >
+                                    Character (角色)
+                                </button>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-4 min-h-0">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                    {sorted.map(c => (
+
+                            <button onClick={() => setShowImportPreset(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">✕</button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                {allChains
+                                    .filter(c => (importTab === 'character' ? c.type === 'character' : (c.type === 'style' || !c.type)))
+                                    .sort((a, b) => {
+                                        const aFav = favorites.has(a.id); const bFav = favorites.has(b.id);
+                                        if (aFav && !bFav) return -1; if (!aFav && bFav) return 1; return 0;
+                                    })
+                                    .map(c => (
                                         <button
                                             key={c.id}
                                             type="button"
                                             onClick={() => initiateImport(c)}
                                             className="flex flex-col rounded-xl border border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-gray-50 dark:hover:bg-gray-700/50 bg-white dark:bg-gray-800/80 overflow-hidden text-left transition-colors"
                                         >
-                                            <div className="aspect-square w-full bg-gray-100 dark:bg-gray-700 flex-shrink-0 relative">
+                                            <div className="aspect-square w-full bg-black/5 dark:bg-black/20 flex-shrink-0 relative">
                                                 {c.previewImage ? (
-                                                    <img src={c.previewImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                                                    <img src={c.previewImage} alt="" className="absolute inset-0 w-full h-full object-contain" />
                                                 ) : (
                                                     <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">无图</div>
                                                 )}
                                                 {favorites.has(c.id) && (
-                                                    <span className="absolute top-1 right-1 text-amber-500" title="已收藏">★</span>
+                                                    <span className="absolute top-1 right-1 text-amber-500 text-lg drop-shadow-md" title="已收藏">★</span>
                                                 )}
                                             </div>
                                             <div className="p-2 flex-1 min-h-0 flex flex-col">
@@ -1031,15 +1054,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                             </div>
                                         </button>
                                     ))}
-                                </div>
-                                {sorted.length === 0 && (
-                                    <div className="text-center text-gray-400 py-12 text-sm">暂无可用预设</div>
-                                )}
                             </div>
+                            {allChains.filter(c => (importTab === 'character' ? c.type === 'character' : (c.type === 'style' || !c.type))).length === 0 && (
+                                <div className="text-center text-gray-400 py-12 text-sm">暂无此类预设</div>
+                            )}
                         </div>
                     </div>
-                );
-            })()}
+                </div>
+            )}
 
             {/* Import Detail/Confirm Modal */}
             {importCandidate && (

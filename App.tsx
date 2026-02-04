@@ -10,7 +10,7 @@ import { GenHistory } from './components/GenHistory';
 import { db } from './services/dbService';
 import { PromptChain, User, Artist, Inspiration, ChainType } from './types';
 
-type ViewState = 'list' | 'characters' | 'edit' | 'library' | 'inspiration' | 'admin' | 'history';
+type ViewState = 'list' | 'characters' | 'edit' | 'library' | 'inspiration' | 'admin' | 'history' | 'playground';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 Hour Cache
 
@@ -20,6 +20,9 @@ const App = () => {
   const [chains, setChains] = useState<PromptChain[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbConfigError, setDbConfigError] = useState(false);
+
+  // Playground State
+  const [playgroundChain, setPlaygroundChain] = useState<PromptChain | null>(null);
 
   // Data Cache State
   const [artistsCache, setArtistsCache] = useState<Artist[] | null>(null);
@@ -141,6 +144,31 @@ const App = () => {
       loadArtists();
       if (currentUser?.role === 'admin') loadUsers();
     }
+
+    if (newView === 'playground' && !playgroundChain) {
+      // Initialize Playground Chain
+      setPlaygroundChain({
+        id: 'playground',
+        name: '生图实验室',
+        description: '临时生图实验，点击 Fork 可保存到库',
+        userId: currentUser?.id || 'guest',
+        basePrompt: '',
+        negativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
+        modules: [],
+        params: {
+          width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: []
+        },
+        variableValues: { subject: '' },
+        type: 'style',
+        tags: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+  };
+
+  const handleUpdatePlaygroundChain = async (id: string, updates: Partial<PromptChain>) => {
+    setPlaygroundChain(prev => prev ? { ...prev, ...updates } : null);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -343,6 +371,18 @@ const App = () => {
         />;
       case 'history':
         return <GenHistory currentUser={currentUser} notify={notify} />;
+      case 'playground':
+        if (!playgroundChain) return <div>Loading...</div>;
+        return <ChainEditor
+          chain={playgroundChain}
+          allChains={chains}
+          currentUser={currentUser}
+          onUpdateChain={handleUpdatePlaygroundChain}
+          onBack={() => handleNavigate('list')}
+          onFork={handleForkChain}
+          setIsDirty={() => { }}
+          notify={notify}
+        />;
       default:
         return <div>Unknown View</div>;
     }
@@ -358,6 +398,7 @@ const App = () => {
         currentUser={currentUser}
         onLogout={handleLogout}
         toast={toast}
+        hideNav={view === 'edit' || view === 'playground'}
       >
         {renderContent()}
       </Layout>

@@ -29,6 +29,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify }) =
     const [lightbox, setLightbox] = useState<LocalGenItem | null>(null);
     const [isPublishing, setIsPublishing] = useState(false);
     const [publishTitle, setPublishTitle] = useState('');
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -82,7 +83,11 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify }) =
             notify('发布成功！已加入灵感图库');
             setIsPublishing(false);
             setPublishTitle('');
-            // Optional: Close lightbox or stay
+            notify('发布成功！已加入灵感图库');
+            setIsPublishing(false);
+            setPublishTitle('');
+            setLightbox(null); // Close lightbox
+            setShowSuccessModal(true); // Show Success Modal
         } catch (e: any) {
             notify('发布失败: ' + e.message, 'error');
             setIsPublishing(false);
@@ -219,6 +224,28 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify }) =
                                 </a>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+
+            {/* Success Modal */}
+            {showSuccessModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-bounce-in">
+                        <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-full flex items-center justify-center text-3xl mb-4">
+                            ✨
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">发布成功！</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                            您的作品已添加到灵感图库，其他用户可以查看并引用您的 Prompt。
+                        </p>
+                        <button
+                            onClick={() => setShowSuccessModal(false)}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-all"
+                        >
+                            好哒喵~
+                        </button>
                     </div>
                 </div>
             )}

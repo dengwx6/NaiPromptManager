@@ -15,6 +15,7 @@ interface ChainEditorPreviewProps {
     handleSavePreview: () => void;
     handleUploadCover: (e: React.ChangeEvent<HTMLInputElement>) => void;
     getDownloadFilename: () => string;
+    hideCoverActions?: boolean;
 }
 
 export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
@@ -30,7 +31,8 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
     isUploading,
     handleSavePreview,
     handleUploadCover,
-    getDownloadFilename
+    getDownloadFilename,
+    hideCoverActions
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -53,19 +55,18 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
                 <button
                     onClick={handleGenerate}
                     disabled={isGenerating}
-                    className={`w-full py-3 rounded-lg font-bold text-white shadow-lg transition-all mb-4 flex-shrink-0 ${
-                        isGenerating ? 'bg-gray-400 cursor-wait' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500'
-                    }`}
-                    >
+                    className={`w-full py-3 rounded-lg font-bold text-white shadow-lg transition-all mb-4 flex-shrink-0 ${isGenerating ? 'bg-gray-400 cursor-wait' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500'
+                        }`}
+                >
                     {isGenerating ? '生成中...' : '生成预览 (自动保存历史)'}
                 </button>
                 {errorMsg && <div className="text-red-500 text-xs mb-2 text-center">{errorMsg}</div>}
-                
-                <div 
+
+                <div
                     className="flex-1 min-h-[300px] lg:min-h-0 bg-white dark:bg-gray-950/50 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-center relative group overflow-hidden cursor-zoom-in"
                     onClick={() => {
                         const img = generatedImage || previewImage;
-                        if(img) setLightboxImg(img);
+                        if (img) setLightboxImg(img);
                     }}
                 >
                     {generatedImage ? (
@@ -73,34 +74,35 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
                             <img src={generatedImage} alt="已生成" className="max-w-full max-h-full object-contain shadow-2xl" />
                             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                 <a href={generatedImage} download={getDownloadFilename()} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
-                                {isOwner && <button onClick={(e) => { e.stopPropagation(); handleSavePreview(); }} disabled={isUploading} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1">{isUploading ? '上传中...' : '设为封面'}</button>}
+                                {isOwner && !hideCoverActions && <button onClick={(e) => { e.stopPropagation(); handleSavePreview(); }} disabled={isUploading} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1">{isUploading ? '上传中...' : '设为封面'}</button>}
                             </div>
                         </>
                     ) : (
                         previewImage ? (
-                                <>
-                                    <img src={previewImage} alt="封面" className="max-w-full max-h-full object-contain shadow-2xl opacity-50 grayscale hover:grayscale-0 transition-all duration-500" />
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <span className="bg-black/50 text-white px-3 py-1 rounded text-xs">当前封面</span>
-                                    </div>
-                                    <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                        <a href={previewImage} download={getDownloadFilename()} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
-                                    </div>
-                                </>
+                            <>
+                                <img src={previewImage} alt="封面" className="max-w-full max-h-full object-contain shadow-2xl opacity-50 grayscale hover:grayscale-0 transition-all duration-500" />
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <span className="bg-black/50 text-white px-3 py-1 rounded text-xs">当前封面</span>
+                                </div>
+                                <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                    <a href={previewImage} download={getDownloadFilename()} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
+                                </div>
+                            </>
                         ) : <div className="text-gray-400 text-xs">预览区</div>
                     )}
-                    
+
+
                     {/* Manual Upload Cover Button */}
-                    {isOwner && (
+                    {isOwner && !hideCoverActions && (
                         <div className="absolute bottom-4 right-4 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                            <input 
-                                type="file" 
+                            <input
+                                type="file"
                                 ref={fileInputRef}
-                                className="hidden" 
-                                accept="image/*" 
+                                className="hidden"
+                                accept="image/*"
                                 onChange={handleUploadCover}
                             />
-                            <button 
+                            <button
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={isUploading}
                                 className="bg-gray-800/80 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-xs shadow-lg backdrop-blur"

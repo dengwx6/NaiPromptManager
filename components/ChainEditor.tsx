@@ -528,6 +528,23 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setShowForkModal(true);
     };
 
+    const handleReset = () => {
+        if (!confirm('确定要重置实验室吗？所有当前输入都将丢失。')) return;
+        setChainName('生图实验室');
+        setChainDesc('临时生图实验，点击 Fork 可保存到库');
+        setBasePrompt('');
+        setNegativePrompt(''); // keep empty for playground
+        // Reset params to defaults
+        setParams({
+            width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: []
+        });
+        setSubjectPrompt('');
+        setModules([]);
+        setActiveModules({});
+        setGeneratedImage(null);
+        notify('实验室已重置');
+    };
+
     const confirmFork = (targetType: 'style' | 'character') => {
         const updatedModules = modules.map(m => ({
             ...m,
@@ -588,7 +605,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     };
 
     const handleSavePreview = async () => {
-        if (!generatedImage || !isOwner) return;
+        if (!generatedImage || !isOwner || chain.id === 'playground') return;
         if (confirm('将当前生成的图片设为该串的封面图？\n\n警告：此操作将永久删除旧的封面图（如果是上传的图片）。')) {
             setIsUploading(true);
             try {
@@ -706,6 +723,17 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         >
                             <svg className="w-4 h-4 md:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
                             <span className="hidden md:inline">{chain.id === 'playground' ? '保存到库' : 'Fork'}</span>
+                        </button>
+                    )}
+
+                    {/* Reset Button (Playground Only) */}
+                    {chain.id === 'playground' && (
+                        <button
+                            onClick={handleReset}
+                            className="px-2 md:px-4 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded text-sm font-medium transition-colors"
+                            title="重置"
+                        >
+                            <svg className="w-5 h-5 bg-transparent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                         </button>
                     )}
                 </div>
@@ -991,6 +1019,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                     handleSavePreview={handleSavePreview}
                     handleUploadCover={handleUploadCover}
                     getDownloadFilename={getDownloadFilename}
+                    hideCoverActions={chain.id === 'playground'}
                 />
             </div>
 

@@ -153,7 +153,7 @@ const App = () => {
         description: '临时生图实验，点击 Fork 可保存到库',
         userId: currentUser?.id || 'guest',
         basePrompt: '',
-        negativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
+        negativePrompt: '',
         modules: [],
         params: {
           width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: []

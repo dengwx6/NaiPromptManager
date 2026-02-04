@@ -692,13 +692,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         />
                     </div>
 
-                    {!isOwner && !isGuest && (
+                    {/* Fork / Save to Library Button */}
+                    {((!isOwner && !isGuest) || chain.id === 'playground') && (
                         <button
                             onClick={handleFork}
                             className="px-2 md:px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium shadow-lg shadow-green-500/20 flex items-center"
                         >
                             <svg className="w-4 h-4 md:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
-                            <span className="hidden md:inline">Fork</span>
+                            <span className="hidden md:inline">{chain.id === 'playground' ? '保存到库' : 'Fork'}</span>
                         </button>
                     )}
                 </div>
@@ -950,7 +951,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                     </div>
 
                     {/* Save Footer: fixed on mobile so always visible, sticky in left panel on lg */}
-                    {isOwner && (
+                    {isOwner && chain.id !== 'playground' && (
                         <div className="fixed bottom-0 left-0 right-0 lg:sticky lg:left-auto lg:right-auto lg:bottom-0 z-[999] w-full p-2 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shadow-lg transition-transform duration-300">
                             <div className="text-xs text-gray-500 ml-2">
                                 {hasChanges ? <span className="text-yellow-600 dark:text-yellow-500 font-medium">⚠️ 未保存</span> : <span className="text-green-600 dark:text-green-500">✅ 已保存</span>}

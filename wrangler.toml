@@ -8,7 +8,7 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "nai-db"
-database_id = "04b0c4f6-8b3b-4e1d-a880-2dfe4f7d75f7"
+database_id = "5a162cc1-486c-43c4-8894-bd13341c7420"
 
 # [R2 Bucket Configuration]
 # 绑定 R2 Bucket，用于存储封面图和灵感图

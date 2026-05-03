@@ -400,7 +400,27 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onCreate, on
                     </button>
                   </div>
                   <p className="text-gray-500 dark:text-gray-400 text-xs mb-2 line-clamp-2 h-8 leading-tight">{chain.description || '暂无描述'}</p>
-                  
+
+                  {/* Tags 显示 */}
+                  {chain.tags && chain.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {chain.tags.slice(0, 3).map(tag => (
+                        <span
+                          key={tag}
+                          className="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 text-[10px] rounded-full truncate max-w-16ch"
+                          title={tag}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {chain.tags.length > 3 && (
+                        <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-[10px] rounded-full shrink-0">
+                          +{chain.tags.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-auto flex justify-between items-center pt-2 border-t border-gray-100 dark:border-gray-700/50">
                      <div className="flex flex-col min-w-0 mr-2">
                         <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 truncate" title={chain.username}>

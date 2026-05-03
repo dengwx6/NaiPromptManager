@@ -23,11 +23,13 @@ interface ArtistLibraryConfigProps {
     initialConfig: BenchmarkConfig;
     apiKey: string;
     onApiKeyChange: (key: string) => void;
+    rememberApiKey: boolean;
+    onRememberApiKeyChange: (remember: boolean) => void;
     notify: (msg: string, type?: 'success' | 'error') => void;
 }
 
 export const ArtistLibraryConfig: React.FC<ArtistLibraryConfigProps> = ({
-    show, onClose, onSave, initialConfig, apiKey, onApiKeyChange, notify
+    show, onClose, onSave, initialConfig, apiKey, onApiKeyChange, rememberApiKey, onRememberApiKeyChange, notify
 }) => {
     const [draftConfig, setDraftConfig] = useState<BenchmarkConfig>(initialConfig);
     const [slotToDelete, setSlotToDelete] = useState<number | null>(null);
@@ -101,14 +103,32 @@ export const ArtistLibraryConfig: React.FC<ArtistLibraryConfigProps> = ({
                     {/* API Key Input */}
                     <div>
                         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1">NovelAI API Key (Bearer Token)</label>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
                             className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white font-mono"
                             placeholder="pst-..."
                             value={apiKey}
                             onChange={e => onApiKeyChange(e.target.value)}
                         />
-                        <p className="text-[10px] text-gray-400 mt-1">Key 仅保存在浏览器本地，用于直接调用生成接口。</p>
+                        <div className="flex items-center justify-between mt-2">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={rememberApiKey}
+                                    onChange={e => onRememberApiKeyChange(e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span className="text-xs text-gray-500 dark:text-gray-400">记住 Key（关闭浏览器后仍保留）</span>
+                            </label>
+                            <span className="text-[10px] text-yellow-600 dark:text-yellow-400">
+                                {rememberApiKey ? '⚠️ 持久化存储' : '🔒 会话级存储'}
+                            </span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1">
+                            {rememberApiKey
+                                ? 'Key 将混淆存储在本地，关闭浏览器后仍保留。请确保设备安全。'
+                                : 'Key 仅在当前会话有效，关闭标签页后自动清除。更安全。'}
+                        </p>
                     </div>
 
                     <div className="space-y-4">

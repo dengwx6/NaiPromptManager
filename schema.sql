@@ -9,10 +9,12 @@ DROP TABLE IF EXISTS sessions;
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
-  password TEXT NOT NULL, 
-  role TEXT DEFAULT 'user', 
+  password TEXT NOT NULL,
+  role TEXT DEFAULT 'user',
   created_at INTEGER,
-  storage_usage INTEGER DEFAULT 0
+  last_login INTEGER,
+  storage_usage INTEGER DEFAULT 0,
+  max_storage INTEGER DEFAULT 314572800
 );
 
 CREATE TABLE sessions (
@@ -42,7 +44,9 @@ CREATE TABLE chains (
 CREATE TABLE artists (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  image_url TEXT
+  image_url TEXT,
+  preview_url TEXT,
+  benchmarks TEXT
 );
 
 CREATE TABLE inspirations (

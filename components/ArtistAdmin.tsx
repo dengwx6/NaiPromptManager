@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Artist, User, UsageStats, AccessLog, DailyStat } from '../types';
+import { ROLE_POLICY } from '../config/rolePolicy';
 
 interface ExtendedArtistAdminProps {
     currentUser: User;
@@ -14,12 +15,17 @@ interface ExtendedArtistAdminProps {
     onLogout?: () => void;
 }
 
-export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({ 
-    currentUser, artistsData, usersData, onRefreshArtists, onRefreshUsers, 
-    isDark, toggleTheme, onLogout 
+export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
+    currentUser, artistsData, usersData, onRefreshArtists, onRefreshUsers,
+    isDark, toggleTheme, onLogout
 }) => {
+  // 使用统一的角色策略
   const isAdmin = currentUser.role === 'admin';
-  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile' | 'stats'>(isAdmin ? 'artist' : 'profile');
+  const isVip = currentUser.role === 'vip';
+  const canManageArtists = ROLE_POLICY.canManageArtists(currentUser.role);
+  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile' | 'stats'>(
+    isAdmin ? 'artist' : (isVip ? 'artist' : 'profile')
+  );
   
   // Artist State (Managed via props now, filtered here if needed)
   const artists = artistsData || [];
@@ -34,6 +40,10 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  
+  // 配额编辑状态
+  const [editingQuotaUserId, setEditingQuotaUserId] = useState<string | null>(null);
+  const [newQuotaMB, setNewQuotaMB] = useState<string>('');
 
   // Guest Code State
   const [guestCode, setGuestCode] = useState('');
@@ -53,15 +63,18 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const [statsLoading, setStatsLoading] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
 
-  // Storage calculation helpers
-  const MAX_STORAGE = 300 * 1024 * 1024;
+  // Storage calculation helpers - 使用统一的角色策略
+  const getMaxStorage = () => {
+    if (ROLE_POLICY.isUnlimitedStorage(currentUser.role)) return Infinity;
+    return currentUser?.maxStorage || ROLE_POLICY.getDefaultQuota(currentUser.role) || 300 * 1024 * 1024;
+  };
   const formatBytes = (bytes?: number) => {
       if (!bytes) return '0 MB';
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
   const getUsagePercentage = () => {
       if (!currentUser || !currentUser.storageUsage) return 0;
-      return Math.min(100, (currentUser.storageUsage / MAX_STORAGE) * 100);
+      return Math.min(100, (currentUser.storageUsage / getMaxStorage()) * 100);
   };
 
   const handleRefresh = async () => {
@@ -137,6 +150,50 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       }
   };
 
+  const handleUpdateQuota = async (userId: string) => {
+      const mb = parseFloat(newQuotaMB);
+      if (isNaN(mb) || mb < 0) {
+          alert('请输入有效的配额数值（非负数）');
+          return;
+      }
+      
+      // 验证配额上限（100GB）
+      const MAX_QUOTA_MB = 100 * 1024; // 100GB in MB
+      if (mb > MAX_QUOTA_MB) {
+          alert(`配额值超出上限，最大允许 ${MAX_QUOTA_MB} MB (100GB)`);
+          return;
+      }
+      
+      const bytes = Math.round(mb * 1024 * 1024);
+      setIsLoading(true);
+      try {
+          await db.updateUserQuota(userId, bytes);
+          await onRefreshUsers();
+          setEditingQuotaUserId(null);
+          setNewQuotaMB('');
+          alert('配额更新成功');
+      } catch(e: any) {
+          // 提供更具体的错误信息
+          let errorMessage = '更新失败';
+          if (e.message) {
+              if (e.message.includes('User not found')) {
+                  errorMessage = '用户不存在，请刷新页面重试';
+              } else if (e.message.includes('Invalid maxStorage')) {
+                  errorMessage = '配额值无效，请检查输入';
+              } else if (e.message.includes('Forbidden')) {
+                  errorMessage = '权限不足，请确认管理员权限';
+              } else if (e.message.includes('network') || e.message.includes('fetch')) {
+                  errorMessage = '网络错误，请检查网络连接';
+              } else {
+                  errorMessage = `更新失败: ${e.message}`;
+              }
+          }
+          alert(errorMessage);
+          console.error('配额更新失败:', e);
+      }
+      setIsLoading(false);
+  };
+
   // Fetch Guest Code when Users Tab is active
   useEffect(() => {
       if (isAdmin && activeTab === 'users') {
@@ -175,10 +232,9 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const formatDateTime = (timestamp: number | string) => {
       if (!timestamp || isNaN(Number(timestamp))) return '未知';
       return new Date(Number(timestamp)).toLocaleString('zh-CN', {
+          year: 'numeric',
           month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
+          day: '2-digit'
       });
   };
 
@@ -275,9 +331,9 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">系统管理</h1>
-            {isAdmin && activeTab !== 'profile' && (
-                <button 
-                    onClick={handleRefresh} 
+            {canManageArtists && activeTab !== 'profile' && (
+                <button
+                    onClick={handleRefresh}
                     className={`p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors`}
                     title="刷新列表"
                 >
@@ -287,9 +343,13 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
         </div>
 
         <div className="flex space-x-4 mb-8 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+            {/* 画师管理：admin和vip可见 */}
+            {(isAdmin || isVip) && (
+                <button onClick={() => setActiveTab('artist')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'artist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>画师管理</button>
+            )}
+            {/* 用户管理、使用统计：仅admin可见 */}
             {isAdmin && (
                 <>
-                    <button onClick={() => setActiveTab('artist')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'artist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>画师管理</button>
                     <button onClick={() => setActiveTab('users')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>用户管理</button>
                     <button onClick={() => setActiveTab('stats')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'stats' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>使用统计</button>
                 </>
@@ -298,7 +358,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
         </div>
 
         {/* --- ARTIST TAB --- */}
-        {activeTab === 'artist' && isAdmin && (
+        {activeTab === 'artist' && canManageArtists && (
             <>
                 {/* Import Block */}
                 <div className="mb-6 bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
@@ -411,18 +471,93 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
                 <div className="overflow-x-auto">
                     <table className="w-full bg-white dark:bg-gray-800 rounded shadow">
-                        <thead><tr className="text-left border-b dark:border-gray-700 text-gray-500 p-2"><th className="p-4">用户名</th><th className="p-4">角色</th><th className="p-4">注册时间</th><th className="p-4">操作</th></tr></thead>
+                        <thead><tr className="text-left border-b dark:border-gray-700 text-gray-500 p-2">
+                            <th className="p-4">用户名</th>
+                            <th className="p-4">角色</th>
+                            <th className="p-4">注册时间</th>
+                            <th className="p-4">最后登录</th>
+                            <th className="p-4">存储配额</th>
+                            <th className="p-4">操作</th>
+                        </tr></thead>
                         <tbody>
-                            {users.map(u => (
-                                <tr key={u.id} className="border-b dark:border-gray-700 last:border-0 dark:text-white">
-                                    <td className="p-4">{u.username}</td>
-                                    <td className="p-4"><span className={`px-2 py-1 rounded text-xs ${u.role === 'admin' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{u.role}</span></td>
+                            {users.map(u => {
+                                const usagePercent = u.maxStorage ? Math.min(100, ((u.storageUsage || 0) / u.maxStorage) * 100) : 0;
+                                const isAdminUser = u.role === 'admin';
+                                return (
+                                <tr key={u.id} className={`border-b dark:border-gray-700 last:border-0 dark:text-white ${u.role === 'vip' ? 'bg-yellow-50/30 dark:bg-yellow-900/10' : ''}`}>
+                                    <td className="p-4">
+                                        <span className={u.role === 'vip' ? 'vip-username font-medium' : ''}>{u.username}</span>
+                                        {u.role === 'vip' && <span className="vip-crown ml-1" title="VIP">👑</span>}
+                                    </td>
+                                    <td className="p-4">
+                                        <select
+                                            value={u.role}
+                                            onChange={async (e) => {
+                                                const newRole = e.target.value;
+                                                try {
+                                                    // 角色变更时不自动重置配额，保留用户现有配额
+                                                    await db.updateUserRole(u.id, newRole, false);
+                                                    await onRefreshUsers();
+                                                } catch (err) {
+                                                    alert('角色更新失败');
+                                                }
+                                            }}
+                                            className={`px-2 py-1 rounded text-xs border-0 cursor-pointer ${ROLE_POLICY.getRoleBadgeClass(u.role as any)}`}
+                                            disabled={u.id === currentUser.id}
+                                        >
+                                            <option value="user">{ROLE_POLICY.getRoleDisplayName('user')}</option>
+                                            <option value="vip">{ROLE_POLICY.getRoleDisplayName('vip')}</option>
+                                            <option value="admin">{ROLE_POLICY.getRoleDisplayName('admin')}</option>
+                                        </select>
+                                    </td>
                                     <td className="p-4 text-sm text-gray-500">{formatDate(u.createdAt)}</td>
+                                    <td className="p-4 text-sm text-gray-500">{formatDateTime(u.lastLogin)}</td>
+                                    <td className="p-4">
+                                        {ROLE_POLICY.isUnlimitedStorage(u.role) ? (
+                                            <div className="text-xs text-gray-500">
+                                                <span className="text-green-600 dark:text-green-400 font-medium">无限制</span>
+                                                <div className="text-gray-400 mt-1">管理员不受存储配额限制</div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="text-xs text-gray-500 mb-1">
+                                                    {formatBytes(u.storageUsage)} / {formatBytes(u.maxStorage || ROLE_POLICY.getDefaultQuota(u.role) || 0)}
+                                                </div>
+                                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full transition-all ${usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                                                        style={{ width: `${usagePercent}%` }}
+                                                    ></div>
+                                                </div>
+                                                {editingQuotaUserId === u.id ? (
+                                                    <div className="flex gap-1 mt-2">
+                                                        <input
+                                                            type="number"
+                                                            value={newQuotaMB}
+                                                            onChange={e => setNewQuotaMB(e.target.value)}
+                                                            className="w-20 p-1 text-xs border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white"
+                                                            placeholder="MB"
+                                                        />
+                                                        <button onClick={() => handleUpdateQuota(u.id)} className="text-xs text-green-600 hover:text-green-700">保存</button>
+                                                        <button onClick={() => { setEditingQuotaUserId(null); setNewQuotaMB(''); }} className="text-xs text-gray-500 hover:text-gray-700">取消</button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => { setEditingQuotaUserId(u.id); setNewQuotaMB(String(Math.round((u.maxStorage || 0) / (1024 * 1024)))); }}
+                                                        className="text-xs text-indigo-500 hover:text-indigo-700 mt-1"
+                                                    >
+                                                        修改配额
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                    </td>
                                     <td className="p-4">
                                         {u.id !== currentUser.id && u.role !== 'guest' && <button onClick={() => handleDeleteUser(u.id)} className="text-red-500">删除</button>}
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

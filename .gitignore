@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# TypeScript build cache
+*.tsbuildinfo
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,3 +26,12 @@ dist-ssr
 *.sln
 *.sw?
 plans/*
+AGENTS.md
+docs/plans/
+.planning
+
+# 本地部署数据
+local-data/
+
+# Wrangler 本地缓存
+.wrangler/

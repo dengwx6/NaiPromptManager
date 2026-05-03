@@ -359,6 +359,7 @@ const App = () => {
           inspirationsData={inspirationsCache}
           onRefresh={() => loadInspirations(true)}
           notify={notify}
+          onNavigateToPlayground={() => handleNavigate('playground')}
         />;
       case 'admin':
         return <ArtistAdmin
@@ -372,7 +373,7 @@ const App = () => {
           onLogout={handleLogout}
         />;
       case 'history':
-        return <GenHistory currentUser={currentUser} notify={notify} />;
+        return <GenHistory currentUser={currentUser} notify={notify} onNavigateToPlayground={() => handleNavigate('playground')} />;
       case 'playground':
         if (!playgroundChain) return <div>Loading...</div>;
         return <ChainEditor

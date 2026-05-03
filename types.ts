@@ -1,14 +1,16 @@
 
 // Core Data Models
 
-export type UserRole = 'admin' | 'user' | 'guest';
+export type UserRole = 'admin' | 'vip' | 'user' | 'guest';
 
 export interface User {
   id: string;
   username: string;
   role: UserRole;
   createdAt: number;
+  lastLogin?: number; // 最后登录时间
   storageUsage?: number; // Bytes used
+  maxStorage?: number; // 最大存储配额（字节）
 }
 
 export interface PromptModule {

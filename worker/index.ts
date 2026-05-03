@@ -46,6 +46,36 @@ interface Env {
   // GUEST_PASSCODE removed, now stored in DB
 }
 
+// ==================== 角色策略配置 ====================
+// 统一的角色策略定义，前后端应共用此语义
+const ROLE_POLICY = {
+  // 有效角色列表
+  VALID_ROLES: ['user', 'vip', 'admin', 'guest'] as const,
+  
+  // 可管理画师的角色（admin + vip）
+  CAN_MANAGE_ARTISTS: ['admin', 'vip'] as const,
+  
+  // 默认存储配额（字节）
+  DEFAULT_QUOTA: {
+    user: 314572800,    // 300MB
+    vip: 524288000,     // 500MB
+    admin: null,        // admin 无限制，使用 null 表示
+    guest: 104857600,   // 100MB
+  } as const,
+  
+  // 判断是否可管理画师
+  canManageArtists: (role: string) => ['admin', 'vip'].includes(role),
+  
+  // 判断是否不受存储配额限制
+  isUnlimitedStorage: (role: string) => role === 'admin',
+  
+  // 获取默认配额，admin 返回 null 表示无限制
+  getDefaultQuota: (role: string): number | null => {
+    if (role === 'admin') return null;
+    return (ROLE_POLICY.DEFAULT_QUOTA as Record<string, number | null>)[role] ?? 314572800;
+  }
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
@@ -67,10 +97,12 @@ const INIT_SQL = `
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL, 
-    role TEXT DEFAULT 'user', 
+    password TEXT NOT NULL,
+    role TEXT DEFAULT 'user',
     created_at INTEGER,
-    storage_usage INTEGER DEFAULT 0
+    last_login INTEGER,
+    storage_usage INTEGER DEFAULT 0,
+    max_storage INTEGER DEFAULT 314572800
   );
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -98,7 +130,9 @@ const INIT_SQL = `
   CREATE TABLE IF NOT EXISTS artists (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    image_url TEXT
+    image_url TEXT,
+    preview_url TEXT,
+    benchmarks TEXT
   );
   CREATE TABLE IF NOT EXISTS inspirations (
     id TEXT PRIMARY KEY,
@@ -181,11 +215,11 @@ async function deleteR2File(env: Env, url: string) {
 
 // Helper: Process Base64 Image and Upload to R2 with Quota Check
 async function processImageUpload(
-    env: Env, 
-    imageData: string, 
-    folder: string, 
+    env: Env,
+    imageData: string,
+    folder: string,
     id: string,
-    user?: { id: string, role: string, storage_usage?: number }
+    user?: { id: string, role: string, storage_usage?: number, max_storage?: number }
 ): Promise<string> {
     if (imageData.startsWith('http') || imageData.startsWith('/api/')) return imageData;
 
@@ -212,8 +246,9 @@ async function processImageUpload(
 
     if (user && user.role !== 'admin') {
         const currentUsage = user.storage_usage || 0;
-        if (currentUsage + fileSize > MAX_STORAGE_QUOTA) {
-            throw new Error(`Storage quota exceeded (300MB limit).`);
+        const maxStorage = user.max_storage || 314572800; // 默认300MB
+        if (currentUsage + fileSize > maxStorage) {
+            throw new Error(`Storage quota exceeded (limit: ${Math.round(maxStorage / 1024 / 1024)}MB).`);
         }
     }
 
@@ -227,6 +262,63 @@ async function processImageUpload(
     }
 
     return `/api/assets/${filename}`;
+}
+
+// Helper: Fetch External Image URL and Upload to R2
+async function fetchAndUploadImage(
+    env: Env,
+    imageUrl: string,
+    folder: string,
+    id: string,
+    user?: { id: string, role: string, storage_usage?: number, max_storage?: number }
+): Promise<string> {
+    if (!imageUrl.startsWith('http')) return imageUrl;
+    
+    if (!env.BUCKET) {
+        throw new Error("R2 Bucket not configured");
+    }
+
+    try {
+        // Fetch the image from external URL
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+        }
+
+        // Get the image data as ArrayBuffer
+        const arrayBuffer = await response.arrayBuffer();
+        const fileSize = arrayBuffer.byteLength;
+
+        // Extract file extension from URL or Content-Type
+        const contentType = response.headers.get('Content-Type') || 'image/jpeg';
+        const ext = contentType.split('/')[1] || 'jpg';
+        
+        // Generate filename
+        const urlPathname = new URL(imageUrl).pathname;
+        const originalFilename = urlPathname.split('/').pop() || `${id}_${Date.now()}`;
+        const filename = `${folder}/${id}_${originalFilename}`;
+
+        if (user && user.role !== 'admin') {
+            const currentUsage = user.storage_usage || 0;
+            const maxStorage = user.max_storage || 314572800; // 默认 300MB
+            if (currentUsage + fileSize > maxStorage) {
+                throw new Error(`Storage quota exceeded (limit: ${Math.round(maxStorage / 1024 / 1024)}MB).`);
+            }
+        }
+
+        await env.BUCKET.put(filename, arrayBuffer, {
+            httpMetadata: { contentType }
+        });
+        
+        if (user && env.DB) {
+            await env.DB.prepare('UPDATE users SET storage_usage = COALESCE(storage_usage, 0) + ? WHERE id = ?')
+                .bind(fileSize, user.id).run();
+        }
+
+        return `/api/assets/${filename}`;
+    } catch (error: any) {
+        throw new Error(`Failed to fetch and store external image: ${error.message}`);
+    }
 }
 
 export default {
@@ -342,13 +434,13 @@ export default {
             .bind(sessionId, Date.now()).first<{user_id: string}>();
         if (!session) return null;
         try {
-            return await db.prepare('SELECT id, username, role, storage_usage FROM users WHERE id = ?')
-                .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number}>();
+            return await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
+                .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number}>();
         } catch (e: any) {
              if (e.message && e.message.includes('no such column')) {
                  await initDB();
-                 return await db.prepare('SELECT id, username, role, storage_usage FROM users WHERE id = ?')
-                    .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number}>();
+                 return await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
+                    .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number}>();
              }
              throw e;
         }
@@ -392,6 +484,8 @@ export default {
           const sessionId = crypto.randomUUID();
           const expiresAt = Date.now() + 604800000;
           await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionId, user.id, expiresAt).run();
+          // 更新最后登录时间
+          await db.prepare('UPDATE users SET last_login = ? WHERE id = ?').bind(Date.now(), user.id).run();
           // 记录登录日志和每日统计
           await logAccess(db, { id: user.id, username, role: user.role }, request, 'login');
           await incrementDailyStat(db, 'user_logins');
@@ -407,7 +501,7 @@ export default {
       if (path === '/api/auth/me' && method === 'GET') {
           const user = await getSessionUser();
           if (!user) return error('Unauthorized', 401);
-          return json({ id: user.id, username: user.username, role: user.role, storageUsage: user.storage_usage || 0 });
+          return json({ id: user.id, username: user.username, role: user.role, storageUsage: user.storage_usage || 0, maxStorage: user.max_storage || 314572800 });
       }
 
       // --- Authenticated Logic ---
@@ -555,9 +649,11 @@ export default {
           const ext = file.name.split('.').pop() || 'png';
           const filename = `${folder}/${currentUser.id}_${Date.now()}.${ext}`;
           const fileSize = file.size;
-          if (currentUser.role !== 'admin') {
+          // 使用统一的角色策略检查存储配额
+          if (!ROLE_POLICY.isUnlimitedStorage(currentUser.role)) {
               const currentUsage = currentUser.storage_usage || 0;
-              if (currentUsage + fileSize > MAX_STORAGE_QUOTA) return error(`Storage quota exceeded`, 413);
+              const maxStorage = currentUser.max_storage || ROLE_POLICY.getDefaultQuota(currentUser.role) || 314572800;
+              if (currentUsage + fileSize > maxStorage) return error(`Storage quota exceeded`, 413);
           }
           await env.BUCKET.put(filename, file.stream(), { httpMetadata: { contentType: file.type } });
           await db.prepare('UPDATE users SET storage_usage = COALESCE(storage_usage, 0) + ? WHERE id = ?').bind(fileSize, currentUser.id).run();
@@ -567,9 +663,24 @@ export default {
       // --- CRUD Routes ---
       if (path === '/api/users' && method === 'POST') {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
-          const { username, password } = await request.json() as any;
+          const { username, password, role = 'user' } = await request.json() as any;
+          
+          // 使用统一的角色策略验证角色值
+          if (!ROLE_POLICY.VALID_ROLES.includes(role as any) || role === 'guest') {
+              return error('Invalid role', 400);
+          }
+          
           const hashedPassword = await bcrypt.hash(password, 10);
-          try { await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)').bind(crypto.randomUUID(), username, hashedPassword, 'user', Date.now()).run(); return json({ success: true }); } catch(e) { return error('Username exists', 409); }
+          // 使用统一的角色策略获取默认配额，admin 为 null 表示无限制
+          const defaultQuota = ROLE_POLICY.getDefaultQuota(role);
+          
+          try {
+              await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage, max_storage) VALUES (?, ?, ?, ?, ?, 0, ?)')
+                  .bind(crypto.randomUUID(), username, hashedPassword, role, Date.now(), defaultQuota).run();
+              return json({ success: true });
+          } catch(e) {
+              return error('Username exists', 409);
+          }
       }
       if (path === '/api/users/password' && method === 'PUT') {
           const { password } = await request.json() as any;
@@ -578,9 +689,39 @@ export default {
           return json({ success: true });
       }
       if (path === '/api/users' && method === 'GET') {
-         if (currentUser.role !== 'admin') return error('Forbidden', 403);
-         const res = await db.prepare('SELECT id, username, role, created_at, storage_usage FROM users ORDER BY created_at DESC').all();
-         return json(res.results);
+          if (currentUser.role !== 'admin') return error('Forbidden', 403);
+          
+          // 支持分页参数
+          const page = parseInt(url.searchParams.get('page') || '0');
+          const pageSize = Math.min(parseInt(url.searchParams.get('pageSize') || '50'), 100); // 最大100条
+          const offset = page * pageSize;
+          
+          // 获取总数
+          const countResult = await db.prepare('SELECT COUNT(*) as total FROM users').first<{total: number}>();
+          const total = countResult?.total || 0;
+          
+          // 分页查询
+          const res = await db.prepare('SELECT id, username, role, created_at, last_login, storage_usage, max_storage FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
+            .bind(pageSize, offset).all();
+          
+          // 将数据库字段名（下划线）映射为前端字段名（驼峰）
+          return json({
+              data: res.results.map((u: any) => ({
+                  id: u.id,
+                  username: u.username,
+                  role: u.role,
+                  createdAt: u.created_at,
+                  lastLogin: u.last_login,
+                  storageUsage: u.storage_usage,
+                  maxStorage: u.max_storage
+              })),
+              pagination: {
+                  page,
+                  pageSize,
+                  total,
+                  totalPages: Math.ceil(total / pageSize)
+              }
+          });
       }
       if (path.startsWith('/api/users/') && method === 'DELETE') {
          if (currentUser.role !== 'admin') return error('Forbidden', 403);
@@ -588,6 +729,76 @@ export default {
          if (id === currentUser.id) return error('Cannot delete self', 400);
          await db.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
          return json({ success: true });
+      }
+      // 更新用户最大配额
+      if (path.match(/^\/api\/users\/[^/]+\/quota$/) && method === 'PUT') {
+         if (currentUser.role !== 'admin') return error('Forbidden', 403);
+         const userId = path.split('/')[3];
+         const { maxStorage } = await request.json() as any;
+
+         // 输入验证
+         if (typeof maxStorage !== 'number' || maxStorage < 0) {
+           return error('Invalid maxStorage value: must be a non-negative number', 400);
+         }
+
+         // 设置合理的上限（100GB）
+         const MAX_QUOTA_LIMIT = 100 * 1024 * 1024 * 1024; // 100GB
+         if (maxStorage > MAX_QUOTA_LIMIT) {
+           return error(`Invalid maxStorage value: exceeds maximum limit of 100GB`, 400);
+         }
+
+         // 使用事务确保原子性：验证用户存在性 + 更新配额
+         const batchResults = await db.batch([
+           db.prepare('SELECT id FROM users WHERE id = ?').bind(userId),
+           db.prepare('UPDATE users SET max_storage = ? WHERE id = ?').bind(maxStorage, userId)
+         ]);
+
+         // 检查第一个查询结果：用户是否存在
+         const targetUser = batchResults[0].results?.[0];
+         if (!targetUser) {
+           return error('User not found', 404);
+         }
+
+         // 检查第二个查询结果：更新是否成功
+         if (!batchResults[1].success) {
+           return error('Failed to update quota', 500);
+         }
+
+         return json({ success: true });
+      }
+      
+      // 更新用户角色
+      if (path.match(/^\/api\/users\/[^/]+\/role$/) && method === 'PUT') {
+         if (currentUser.role !== 'admin') return error('Forbidden', 403);
+         const userId = path.split('/')[3];
+         const { role, resetQuota = false } = await request.json() as any;
+
+         // 使用统一的角色策略验证角色值
+         if (!ROLE_POLICY.VALID_ROLES.includes(role as any) || role === 'guest') {
+           return error('Invalid role value: must be user, vip, or admin', 400);
+         }
+
+         // 不能修改自己的角色
+         if (userId === currentUser.id) {
+           return error('Cannot change own role', 400);
+         }
+
+         // 获取用户当前信息
+         const targetUser = await db.prepare('SELECT id, role, max_storage FROM users WHERE id = ?').bind(userId).first<{id: string, role: string, max_storage: number | null}>();
+         if (!targetUser) {
+           return error('User not found', 404);
+         }
+
+         // 只有显式请求重置配额时才更新配额，避免隐藏副作用
+         if (resetQuota) {
+           const defaultQuota = ROLE_POLICY.getDefaultQuota(role);
+           await db.prepare('UPDATE users SET role = ?, max_storage = ? WHERE id = ?').bind(role, defaultQuota, userId).run();
+           return json({ success: true, role, maxStorage: defaultQuota });
+         } else {
+           // 仅更新角色，保留现有配额
+           await db.prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, userId).run();
+           return json({ success: true, role, maxStorage: targetUser.max_storage });
+         }
       }
 
       // Chains
@@ -671,7 +882,8 @@ export default {
          return json(res.results.map((a: any) => ({ id: a.id, name: a.name, imageUrl: a.image_url, previewUrl: a.preview_url, benchmarks: a.benchmarks ? JSON.parse(a.benchmarks) : [] })));
       }
       if (path === '/api/artists' && method === 'POST') {
-        if (currentUser.role !== 'admin') return error('Forbidden', 403);
+        // 使用统一的角色策略检查画师管理权限（admin + vip）
+        if (!ROLE_POLICY.canManageArtists(currentUser.role)) return error('Forbidden', 403);
         const body = await request.json() as any;
         const id = body.id || crypto.randomUUID();
         
@@ -679,6 +891,7 @@ export default {
         const existing = await db.prepare('SELECT benchmarks, preview_url, image_url FROM artists WHERE id = ?').bind(id).first<{benchmarks: string, preview_url: string, image_url: string}>();
         const oldBenchmarks = existing && existing.benchmarks ? JSON.parse(existing.benchmarks) : [];
 
+        // Process image URL - handle both Base64 and external URL
         let imageUrl = body.imageUrl;
         if (imageUrl && imageUrl.startsWith('data:')) {
             imageUrl = await processImageUpload(env, imageUrl, 'artists', id);
@@ -686,8 +899,16 @@ export default {
             if (existing && existing.image_url && existing.image_url !== imageUrl) {
                 await deleteR2File(env, existing.image_url);
             }
+        } else if (imageUrl && imageUrl.startsWith('http')) {
+            // Fetch external image URL and store in R2
+            imageUrl = await fetchAndUploadImage(env, imageUrl, 'artists', id, currentUser);
+            // Delete old avatar if changed
+            if (existing && existing.image_url && existing.image_url !== imageUrl) {
+                await deleteR2File(env, existing.image_url);
+            }
         }
 
+        // Process benchmarks - handle both Base64 and external URLs
         let benchmarks = body.benchmarks || [];
         if (Array.isArray(benchmarks)) {
             for (let i = 0; i < benchmarks.length; i++) {
@@ -701,15 +922,31 @@ export default {
                     if (oldUrl && oldUrl !== newUrl) {
                         await deleteR2File(env, oldUrl);
                     }
+                } else if (benchmarks[i] && benchmarks[i].startsWith('http')) {
+                    // Fetch external image URL and store in R2
+                    const newUrl = await fetchAndUploadImage(env, benchmarks[i], `artists/benchmarks_${i}`, id, currentUser);
+                    benchmarks[i] = newUrl;
+                    
+                    // Check and delete old file at this index
+                    const oldUrl = oldBenchmarks[i];
+                    if (oldUrl && oldUrl !== newUrl) {
+                        await deleteR2File(env, oldUrl);
+                    }
                 }
             }
         }
         
-        await db.prepare(`INSERT INTO artists (id, name, image_url, benchmarks, preview_url) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, image_url = excluded.image_url, benchmarks = excluded.benchmarks`).bind(id, body.name, imageUrl, JSON.stringify(benchmarks), body.previewUrl).run();
+        // Handle undefined values - convert to null or default
+        const previewUrl = body.previewUrl ?? null;
+        const benchmarksJson = JSON.stringify(benchmarks || []);
+        const sanitizedName = body.name ? body.name.trim() : '';
+        
+        await db.prepare(`INSERT INTO artists (id, name, image_url, benchmarks, preview_url) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, image_url = excluded.image_url, benchmarks = excluded.benchmarks, preview_url = excluded.preview_url`).bind(id, sanitizedName, imageUrl, benchmarksJson, previewUrl).run();
         return json({ success: true, benchmarks });
       }
       if (path.startsWith('/api/artists/') && method === 'DELETE') {
-        if (currentUser.role !== 'admin') return error('Forbidden', 403);
+        // 使用统一的角色策略检查画师管理权限（admin + vip）
+        if (!ROLE_POLICY.canManageArtists(currentUser.role)) return error('Forbidden', 403);
         const id = path.split('/').pop();
         const artist = await db.prepare('SELECT benchmarks, preview_url, image_url FROM artists WHERE id = ?').bind(id).first<{benchmarks: string, preview_url: string, image_url: string}>();
         if (artist) {

@@ -183,6 +183,9 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     
     // Check if current user is admin
     const isAdmin = currentUser?.role === 'admin';
+    
+    // Check if current user can manage artists (admin + vip)
+    const canManageArtists = currentUser?.role ? ['admin', 'vip'].includes(currentUser.role) : false;
 
     // Queue System
     const [taskQueue, setTaskQueue] = useState<GenTask[]>([]);
@@ -222,13 +225,47 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             }
         });
 
-        const savedKey = localStorage.getItem('nai_api_key');
-        if (savedKey) setApiKey(savedKey);
+        // API Key 安全存储策略：
+        // 1. 优先从 sessionStorage 读取（会话级，关闭标签页即清除）
+        // 2. 其次从 localStorage 读取（持久化，用户明确选择"记住"）
+        // 注意：前端无法真正保护存储的密钥，"记住"功能意味着用户接受风险
+        const sessionKey = sessionStorage.getItem('nai_api_key');
+        if (sessionKey) {
+            setApiKey(sessionKey);
+        } else {
+            const savedKey = localStorage.getItem('nai_api_key');
+            if (savedKey) {
+                setApiKey(savedKey);
+            }
+        }
     }, []);
+
+    // API Key 存储状态：是否记住（持久化到 localStorage）
+    const [rememberApiKey, setRememberApiKey] = useState(() => {
+        return localStorage.getItem('nai_api_key') !== null;
+    });
 
     const handleApiKeyChange = (val: string) => {
         setApiKey(val);
-        localStorage.setItem('nai_api_key', val);
+        // 始终存入 sessionStorage（会话级）
+        sessionStorage.setItem('nai_api_key', val);
+        // 仅在用户选择"记住"时持久化到 localStorage
+        if (rememberApiKey) {
+            localStorage.setItem('nai_api_key', val);
+        } else {
+            localStorage.removeItem('nai_api_key');
+        }
+    };
+
+    const handleRememberKeyChange = (remember: boolean) => {
+        setRememberApiKey(remember);
+        if (remember && apiKey) {
+            // 用户选择记住，持久化当前 Key（用户需自行承担风险）
+            localStorage.setItem('nai_api_key', apiKey);
+        } else {
+            // 用户取消记住，清除 localStorage
+            localStorage.removeItem('nai_api_key');
+        }
     };
 
     const handleRefresh = async () => {
@@ -668,13 +705,16 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             <div className="p-4 bg-white dark:bg-gray-800 shadow-md flex flex-col items-stretch gap-4 z-10 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
 
                 <div className="flex gap-2 w-full">
-                    <button
-                        onClick={handleRefresh}
-                        className={`p-2 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0`}
-                        title="刷新画师列表"
-                    >
-                        <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    </button>
+                    {/* 刷新按钮：仅对可管理画师的角色显示（admin + vip） */}
+                    {canManageArtists && (
+                        <button
+                            onClick={handleRefresh}
+                            className={`p-2 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0`}
+                            title="刷新画师列表"
+                        >
+                            <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        </button>
+                    )}
 
                     {/* Layout Toggle */}
                     <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 flex-shrink-0">
@@ -1235,6 +1275,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 initialConfig={config}
                 apiKey={apiKey}
                 onApiKeyChange={handleApiKeyChange}
+                rememberApiKey={rememberApiKey}
+                onRememberApiKeyChange={handleRememberKeyChange}
                 notify={notify}
             />
         </div>

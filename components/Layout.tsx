@@ -1,6 +1,7 @@
 
 import React, { ReactNode } from 'react';
 import { User } from '../types';
+import { ROLE_POLICY } from '../config/rolePolicy';
 
 interface LayoutProps {
   children: ReactNode;
@@ -15,12 +16,16 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentView, isDark, toggleTheme, currentUser, onLogout, toast, hideNav }) => {
-  // 300MB in bytes
-  const MAX_STORAGE = 300 * 1024 * 1024;
+  // 使用统一的角色策略获取存储配额
+  const getMaxStorage = () => {
+    if (!currentUser) return 300 * 1024 * 1024;
+    if (ROLE_POLICY.isUnlimitedStorage(currentUser.role)) return Infinity;
+    return currentUser?.maxStorage || ROLE_POLICY.getDefaultQuota(currentUser.role) || 300 * 1024 * 1024;
+  };
 
   const getUsagePercentage = () => {
     if (!currentUser || !currentUser.storageUsage) return 0;
-    return Math.min(100, (currentUser.storageUsage / MAX_STORAGE) * 100);
+    return Math.min(100, (currentUser.storageUsage / getMaxStorage()) * 100);
   };
 
   const formatBytes = (bytes?: number) => {
@@ -68,10 +73,18 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
         {currentUser && (
           <div className="flex items-center gap-2">
             <div className="flex flex-col items-end">
-              <span className="text-xs font-bold text-gray-700 dark:text-gray-300 max-w-[100px] truncate">{currentUser.username}</span>
-              <span className="text-[10px] text-gray-400 uppercase">{currentUser.role}</span>
+              <span className={`text-xs font-bold max-w-[100px] truncate ${currentUser.role === 'vip' ? 'vip-username' : 'text-gray-700 dark:text-gray-300'}`}>
+                {currentUser.username}
+              </span>
+              <span className="text-[10px] text-gray-400 uppercase">
+                {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
+              </span>
             </div>
-            <div className="w-8 h-8 rounded bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xs font-bold text-indigo-600 dark:text-indigo-400 border border-gray-200 dark:border-gray-700">
+            <div className={`w-8 h-8 rounded flex items-center justify-center text-xs font-bold border ${
+              currentUser.role === 'vip'
+                ? 'vip-badge bg-gradient-to-br from-yellow-400 to-orange-500 text-white border-transparent'
+                : 'bg-gray-100 dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-gray-200 dark:border-gray-700'
+            }`}>
               {currentUser.username[0].toUpperCase()}
             </div>
             {onLogout && (
@@ -109,11 +122,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-3">
-          {currentUser && currentUser.role !== 'admin' && currentUser.role !== 'guest' && (
+          {currentUser && !ROLE_POLICY.isUnlimitedStorage(currentUser.role) && currentUser.role !== 'guest' && (
             <div className="hidden md:block mb-2">
               <div className="flex justify-between text-xs text-gray-500 mb-1">
                 <span>存储空间</span>
-                <span>{formatBytes(currentUser.storageUsage)} / 300MB</span>
+                <span>{formatBytes(currentUser.storageUsage)} / {formatBytes(getMaxStorage())}</span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
                 <div
@@ -133,12 +146,29 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
           </button>
 
           {currentUser && (
-            <div className="flex items-center justify-between md:justify-start p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50">
+            <div className={`flex items-center justify-between md:justify-start p-2 rounded-lg border ${
+              currentUser.role === 'vip'
+                ? 'vip-badge bg-gray-800 dark:bg-gray-900 border-transparent'
+                : 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50'
+            }`}>
               <div className="flex items-center overflow-hidden">
-                <div className="w-6 h-6 rounded bg-indigo-500 text-white flex items-center justify-center text-xs font-bold mr-0 md:mr-2 flex-shrink-0">
+                <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold mr-0 md:mr-2 flex-shrink-0 ${
+                  currentUser.role === 'vip'
+                    ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white'
+                    : 'bg-indigo-500 text-white'
+                }`}>
                   {currentUser.username[0].toUpperCase()}
                 </div>
-                <span className="hidden md:block text-xs font-medium text-indigo-900 dark:text-indigo-200 truncate">{currentUser.username}</span>
+                <span className={`hidden md:block text-xs font-medium truncate ${
+                  currentUser.role === 'vip'
+                    ? 'vip-username'
+                    : 'text-indigo-900 dark:text-indigo-200'
+                }`}>
+                  {currentUser.username}
+                </span>
+                {currentUser.role === 'vip' && (
+                  <span className="vip-label">VIP</span>
+                )}
               </div>
               {onLogout && (
                 <button onClick={onLogout} className="text-gray-400 hover:text-red-500 ml-2" title="退出登录">

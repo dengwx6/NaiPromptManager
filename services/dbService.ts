@@ -40,11 +40,21 @@ class DBService {
   }
 
   async getUsers(): Promise<User[]> {
-    return await api.get('/users');
+    const res = await api.get('/users');
+    // 兼容后端返回的分页格式 {data: [...], pagination: {...}}
+    return Array.isArray(res) ? res : (res.data || []);
   }
 
   async deleteUser(id: string): Promise<void> {
     await api.delete(`/users/${id}`);
+  }
+
+  async updateUserQuota(userId: string, maxStorage: number): Promise<void> {
+    await api.put(`/users/${userId}/quota`, { maxStorage });
+  }
+
+  async updateUserRole(userId: string, role: string, resetQuota = false): Promise<{ success: boolean; role: string; maxStorage: number }> {
+    return await api.put(`/users/${userId}/role`, { role, resetQuota });
   }
 
   // --- Admin: Guest Settings & Import ---

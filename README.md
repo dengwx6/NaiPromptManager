@@ -70,6 +70,59 @@ NovelAI Prompt Manager 是一个专为 NovelAI 用户打造的现代化提示词
 - Cloudflare 账号
 - Wrangler CLI (可选，用于本地开发)
 
+---
+
+## 💻 本地开发
+
+如果你想在本地运行和测试项目，无需 Cloudflare 账号即可体验完整功能。
+
+### 快速启动
+
+```bash
+# 安装依赖
+npm install
+
+# 启动本地服务 (端口 3000)
+npm run dev:local
+```
+
+首次运行会自动构建前端并启动本地模拟服务器。
+
+- **访问地址**: http://localhost:3000
+- **数据存储**: `./local-data/` 目录（模拟 D1 和 R2）
+- **默认管理员**: `admin` / `admin_996`
+
+### 监听模式开发
+
+如果你需要实时预览代码改动：
+
+```bash
+# 同时监听前端和 Worker 变化
+npm run dev:local:watch
+```
+
+此命令会在后台运行 Vite 构建监听、esbuild Worker 打包监听和本地服务器。
+
+### 平台特定脚本
+
+```bash
+# Windows
+npm run dev:local:win
+
+# Linux / macOS
+npm run dev:local:linux
+```
+
+### 本地数据说明
+
+本地模式使用 Wrangler 的 `--persist-to` 功能，数据存储在 `./local-data/` 目录：
+
+- D1 数据库数据存储为 SQLite 文件
+- R2 存储桶数据存储为本地文件
+- 数据在重启后保留，适合长期本地测试
+
+> **注意**: 本地数据与云端部署的数据完全隔离，不会同步。
+
 ### 1. 准备 Cloudflare 资源
 
 你可以通过 Wrangler CLI 命令行创建，也可以直接在 Cloudflare 网页控制台（Dashboard）创建。
